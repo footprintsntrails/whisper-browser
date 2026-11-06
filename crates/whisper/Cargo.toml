@@ -44,7 +44,7 @@ windows-sys = { version = "0.61", features = [
 embed-resource = "3"
 
 [dev-dependencies]
-rand = "0.8"
+rand = "0.10"
 rsa = "0.9"
 sha2 = { version = "0.10", features = ["oid"] }
 tempfile = "3"
