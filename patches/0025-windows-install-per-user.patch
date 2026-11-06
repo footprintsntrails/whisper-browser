@@ -1,0 +1,210 @@
+Whisper: the Windows installer installs for the current user, without elevation
+
+What: the installer's default folder is %LOCALAPPDATA%\Programs\Whisper instead of
+Program Files; it no longer asks for administrator rights up front (a folder the user
+cannot write to still asks when it is picked); it registers Whisper for the current
+user only (HKCU: Apps & Features, Start menu, file and protocol handlers), also when it
+runs elevated. Apps & Features shows Whisper's own version and Whisper as the
+publisher (Firefox writes "Mozilla" there). The uninstaller keeps the
+profile unless the user says otherwise: it asks (No is the default) and, when silent,
+deletes the profile only with /PURGE (which uninstall\helper.exe now hands on to the
+uninstaller it starts; Firefox's passes only /S). The "reinstalled" marker that makes the browser
+offer a profile reset is kept under Whisper's own registry key, not Firefox's, next to a
+note of what the uninstaller did with the profile.
+Why: a per-user install needs no administrator rights, and the updater can replace
+its files without a UAC prompt or Mozilla's maintenance service (which Whisper does not
+build). Firefox's uninstaller wrote that marker under Software\Mozilla\Firefox, so
+uninstalling Whisper would have made Firefox offer to reset its profile, and Whisper
+would have read and cleared Firefox's marker.
+---
+diff --git a/browser/components/ReinstallCheck.sys.mjs b/browser/components/ReinstallCheck.sys.mjs
+index eb97d70db4..d687ce6700 100644
+--- a/browser/components/ReinstallCheck.sys.mjs
++++ b/browser/components/ReinstallCheck.sys.mjs
+@@ -27,14 +27,16 @@ function readAndClearUninstalledValue() {
+     ).UpdateUtils.UpdateChannel;
+   } catch (ex) {}
+   if (updateChannel) {
++    // Whisper: Whisper's uninstaller writes under Whisper's own key, so Firefox's
++    // marker is never read or cleared here.
+     let uninstalledValue = lazy.WindowsRegistry.readRegKey(
+       Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
+-      "Software\\Mozilla\\Firefox",
++      `Software\\Whisper\\${AppConstants.MOZ_APP_BASENAME}`,
+       `Uninstalled-${updateChannel}`
+     );
+     let removalSuccessful = lazy.WindowsRegistry.removeRegKey(
+       Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
+-      "Software\\Mozilla\\Firefox",
++      `Software\\Whisper\\${AppConstants.MOZ_APP_BASENAME}`,
+       `Uninstalled-${updateChannel}`
+     );
+     return removalSuccessful && uninstalledValue == "True";
+diff --git a/browser/installer/windows/nsis/installer.nsi b/browser/installer/windows/nsis/installer.nsi
+index bdae08d333..c5990cca9b 100755
+--- a/browser/installer/windows/nsis/installer.nsi
++++ b/browser/installer/windows/nsis/installer.nsi
+@@ -159,11 +159,9 @@ VIAddVersionKey "OriginalFilename" "setup.exe"
+ 
+ Name "${BrandFullName}"
+ OutFile "setup.exe"
+-!ifdef HAVE_64BIT_BUILD
+-  InstallDir "$PROGRAMFILES64\${BrandFullName}\"
+-!else
+-  InstallDir "$PROGRAMFILES32\${BrandFullName}\"
+-!endif
++; Whisper: installed for the current user only, where the user can write, so it
++; needs no administrator rights and updates itself without a UAC prompt.
++InstallDir "$LOCALAPPDATA\Programs\${BrandFullName}\"
+ ShowInstDetails nevershow
+ 
+ ################################################################################
+@@ -439,23 +437,10 @@ Section "-Application" APP_IDX
+   ${RegCleanUninstall}
+   ${UpdateProtocolHandlers}
+ 
+-  ClearErrors
+-  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" "Write Test"
+-  ${If} ${Errors}
+-    StrCpy $RegHive "HKCU"
+-  ${Else}
+-    SetShellVarContext all  ; Set SHCTX to HKLM
+-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+-    StrCpy $RegHive "HKLM"
+-    ${RegCleanMain} "Software\Mozilla"
+-    ${RegCleanUninstall}
+-    ${UpdateProtocolHandlers}
+-
+-    ReadRegStr $0 HKLM "Software\mozilla.org\Mozilla" "CurrentVersion"
+-    ${If} "$0" != "${GREVersion}"
+-      WriteRegStr HKLM "Software\mozilla.org\Mozilla" "CurrentVersion" "${GREVersion}"
+-    ${EndIf}
+-  ${EndIf}
++  ; Whisper: a per-user install registers itself for the current user only (HKCU,
++  ; the user's Start menu and Apps & Features entry), even when the installer runs
++  ; with administrator rights.
++  StrCpy $RegHive "HKCU"
+ 
+   ${RemoveDeprecatedKeys}
+   ${Set32to64DidMigrateReg}
+diff --git a/browser/installer/windows/nsis/shared.nsh b/browser/installer/windows/nsis/shared.nsh
+--- a/browser/installer/windows/nsis/shared.nsh
++++ b/browser/installer/windows/nsis/shared.nsh
+@@ -653,7 +653,13 @@
+   IntOp $R2 $R2 & 0x0000FFFF ; $R2 now contains major version
+   IntOp $R3 $R0 & 0x0000FFFF ; $R3 now contains minor version
+ 
++  ; Whisper: Apps & Features shows Whisper's own version (prepare.sh adds
++  ; WhisperVersion to branding.nsi); the application version stays Firefox's.
++!ifdef WhisperVersion
++  ${WriteRegStr2} $RegHive "$0" "DisplayVersion" "${WhisperVersion}" 0
++!else
+   ${WriteRegStr2} $RegHive "$0" "DisplayVersion" "${AppVersion}" 0
++!endif
+   ${WriteRegStr2} $RegHive "$0" "VersionMajor" "$R2" 0
+   ${WriteRegStr2} $RegHive "$0" "VersionMinor" "$R3" 0
+ 
+@@ -701,7 +707,8 @@
+     ${WriteRegStr2} $RegHive "$0" "DisplayName" "${BrandFullNameInternal}$3 (${ARCH} ${AB_CD})" 0
+     ${WriteRegStr2} $RegHive "$0" "HelpLink" "${HelpLink}" 0
+     ${WriteRegStr2} $RegHive "$0" "InstallLocation" "$8" 0
+-    ${WriteRegStr2} $RegHive "$0" "Publisher" "Mozilla" 0
++    ; Whisper: the publisher is Whisper (branding.nsi CompanyName), not Mozilla.
++    ${WriteRegStr2} $RegHive "$0" "Publisher" "${CompanyName}" 0
+     ${WriteRegStr2} $RegHive "$0" "UninstallString" "$\"$8\uninstall\helper.exe$\"" 0
+     DeleteRegValue SHCTX "$0" "URLInfoAbout"
+ ; Don't add URLUpdateInfo which is the release notes url except for the release
+diff --git a/browser/installer/windows/nsis/uninstaller.nsi b/browser/installer/windows/nsis/uninstaller.nsi
+--- a/browser/installer/windows/nsis/uninstaller.nsi
++++ b/browser/installer/windows/nsis/uninstaller.nsi
+@@ -741,7 +741,45 @@
+   ; subsequently deleted after checking. If the value is found during startup
+   ; the browser will offer to Reset Firefox. We use the UpdateChannel to match
+   ; uninstalls of Firefox-release with reinstalls of Firefox-release, for example.
+-  WriteRegStr HKCU "Software\Mozilla\Firefox" "Uninstalled-${UpdateChannel}" "True"
++  ; Whisper: under Whisper's own key (Software\Whisper\<MOZ_APP_BASENAME>, which is
++  ; what browser/components/ReinstallCheck.sys.mjs reads; AppName here is still
++  ; "Firefox"), so uninstalling Whisper never makes Firefox offer to reset its profile.
++  WriteRegStr HKCU "Software\Whisper\Whisper" "Uninstalled-${UpdateChannel}" "True"
++
++  ; Whisper: the profile (bookmarks, history, passwords, settings) stays unless the
++  ; user asks for it to go: a question when uninstalling by hand, /PURGE when silent.
++  StrCpy $1 "keep"
++  ${GetParameters} $0
++  ClearErrors
++  ${GetOptions} "$0" "/PURGE" $2
++  ${IfNot} ${Errors}
++    StrCpy $1 "purge"
++  ${ElseIfNot} ${Silent}
++    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "${WhisperPurgeQuestion}" /SD IDNO IDNO +2
++    StrCpy $1 "purge"
++  ${EndIf}
++  ${If} $1 == "purge"
++    SetShellVarContext current
++    RMDir /r "$APPDATA\${BrandFullNameInternal}"
++    RMDir /r "$LOCALAPPDATA\${BrandFullNameInternal}"
++    ; A file still in use keeps a folder; try once more a little later.
++    ${If} ${FileExists} "$APPDATA\${BrandFullNameInternal}\*.*"
++    ${OrIf} ${FileExists} "$LOCALAPPDATA\${BrandFullNameInternal}\*.*"
++      Sleep 3000
++      RMDir /r "$APPDATA\${BrandFullNameInternal}"
++      RMDir /r "$LOCALAPPDATA\${BrandFullNameInternal}"
++    ${EndIf}
++    ${If} ${FileExists} "$APPDATA\${BrandFullNameInternal}\*.*"
++    ${OrIf} ${FileExists} "$LOCALAPPDATA\${BrandFullNameInternal}\*.*"
++      StrCpy $1 "in use"
++    ${Else}
++      StrCpy $1 "removed"
++    ${EndIf}
++  ${EndIf}
++  ; What happened to the profile ("keep", "removed", or "in use" when a file could
++  ; not be removed), next to the reinstall marker.
++  WriteRegStr HKCU "Software\Whisper\Whisper" "ProfileOnUninstall-${UpdateChannel}" "$1"
++
+ 
+ !ifdef MOZ_MAINTENANCE_SERVICE
+   ; Get the path the allowed cert is at and remove it
+@@ -773,6 +811,7 @@
+   ${If} "$0" == "true"
+     liteFirewallW::RemoveRule "$INSTDIR\${FileMainEXE}" "${BrandShortName} ($INSTDIR)"
+   ${EndIf}
++
+ SectionEnd
+ 
+ ################################################################################
+diff --git a/toolkit/mozapps/installer/windows/nsis/common.nsh b/toolkit/mozapps/installer/windows/nsis/common.nsh
+index 352600813e..60b50ae42c 100755
+--- a/toolkit/mozapps/installer/windows/nsis/common.nsh
++++ b/toolkit/mozapps/installer/windows/nsis/common.nsh
+@@ -5509,11 +5509,9 @@
+           ${EndIf}
+         ${EndIf}
+       ${Else}
+-        ; If we weren't given a custom path parameter, then try to elevate now.
+-        ; We'll check the user's permission level later on to determine the
+-        ; default install path (which will be the real install path for /S).
+-        ; If an INI file is used, we try to elevate down that path when needed.
+-        ${ElevateUAC}
++        ; Whisper: the default install path is in the user's own folder, so there
++        ; is nothing to elevate for (Firefox asks for administrator rights here).
++        ; A folder the user cannot write to still asks, when it is chosen.
+       ${EndIf}
+ 
+       Pop $R4
+diff --git a/browser/installer/windows/nsis/uninstaller_helpers.nsh b/browser/installer/windows/nsis/uninstaller_helpers.nsh
+--- a/browser/installer/windows/nsis/uninstaller_helpers.nsh
++++ b/browser/installer/windows/nsis/uninstaller_helpers.nsh
+@@ -288,6 +288,13 @@
+       ${Else}
+         StrCpy $R1 "$\"$EXEDIR\uninstaller.exe$\""
+       ${EndIf}
++      ; Whisper: hand /PURGE (remove the profile too) on to the uninstaller, which
++      ; otherwise only gets /S.
++      ClearErrors
++      ${GetOptions} "$R0" "/PURGE" $R2
++      ${IfNot} ${Errors}
++        StrCpy $R1 "$R1 /PURGE"
++      ${EndIf}
+ 
+       ; When the uninstaller is launched it copies itself to the temp directory
+       ; so it won't be in use so it can delete itself.

@@ -1,0 +1,19 @@
+#filter substitution
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+browser.jar:
+    content/browser/whisper/cast.css                 (content/cast.css)
+    content/browser/whisper/cast-pages.css           (content/cast-pages.css)
+    content/browser/whisper/fonts/Inter-Regular.woff2   (content/fonts/Inter-Regular.woff2)
+    content/browser/whisper/fonts/Inter-Medium.woff2    (content/fonts/Inter-Medium.woff2)
+    content/browser/whisper/fonts/Inter-SemiBold.woff2  (content/fonts/Inter-SemiBold.woff2)
+    content/browser/whisper/fonts/OFL.txt               (content/fonts/OFL.txt)
+
+# Whisper's strings. Only English for now; the file is not part of Mozilla's
+# localization, so it is shipped as-is for every locale.
+[localization] @AB_CD@.jar:
+    whisper/whisper.ftl                              (locales/en-US/whisper.ftl)
+    whisper/whisper-about.ftl                        (locales/en-US/whisper-about.ftl)
+    whisper/whisper-import.ftl                       (locales/en-US/whisper-import.ftl)

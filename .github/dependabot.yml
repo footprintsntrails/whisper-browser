@@ -1,0 +1,39 @@
+# One grouped pull request per ecosystem per week, and never a major upgrade
+# (those need a person to read the changelog and adapt the code).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      cargo:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # The test-only RSA crate (0.9) needs these exact 0.x lines; for 0.x crates
+      # Dependabot counts a breaking 0.8 -> 0.10 step as a minor update.
+      - dependency-name: rand
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: rsa
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: sha2
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      github-actions:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: deps

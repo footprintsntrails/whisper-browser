@@ -1,0 +1,32 @@
+Whisper: package Whisper's default prefs and the distribution folder
+
+What: lists browser/defaults/preferences/0-whisper.js in the package manifest, and
+puts <install dir>/distribution/ into every package, not only into builds made by
+Mozilla.
+Why: the package manifest names every default pref file, so a new one is left out
+unless it is listed. Whisper ships uBlock Origin as a distribution add-on in
+distribution/extensions/, which Firefox installs and enables in a new profile without
+going online.
+---
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+index 65faf470c9..8d0a8e2aaa 100644
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -268,6 +268,8 @@
+ ; All the pref files must be part of base to prevent migration bugs
+ @RESPATH@/browser/@PREF_DIR@/firefox.js
+ @RESPATH@/browser/@PREF_DIR@/firefox-branding.js
++; Whisper's default prefs (browser/components/whisper/0-whisper.js)
++@RESPATH@/browser/@PREF_DIR@/0-whisper.js
+ @RESPATH@/greprefs.js
+ @RESPATH@/defaults/autoconfig/prefcalls.js
+ @RESPATH@/browser/defaults/permissions
+@@ -466,6 +468,6 @@ bin/libfreebl_64int_3.so
+ @BINPATH@/desktop-launcher/desktop-launcher@BIN_SUFFIX@
+ #endif
+ 
+-#if defined(BUILT_BY_MOZILLA)
++; Whisper ships uBlock Origin in distribution/extensions/ (Firefox only packages
++; this folder for builds made by Mozilla).
+ @RESPATH@/distribution/*
+-#endif

@@ -1,0 +1,27 @@
+Whisper: check for updates at Whisper's update host
+
+What: the update URL in application.ini is
+https://footprintsntrails.github.io/whisper-browser/update/1/%CHANNEL%/%BUILD_TARGET%/update.xml
+instead of Mozilla's aus5.mozilla.org address.
+Why: Whisper's updates are static files on GitHub Pages, one update.xml per channel
+and build target (for example release/Linux_x86_64-gcc3), next to the complete MARs
+in the GitHub release. Only the channel and the build target are in the address:
+Firefox's own address also sends the version, build ID, locale, OS version, CPU
+features and distribution, which a static host has no use for.
+---
+diff --git a/build/application.ini.in b/build/application.ini.in
+index 6df13230a4..980d29e15d 100644
+--- a/build/application.ini.in
++++ b/build/application.ini.in
+@@ -52,5 +52,10 @@ ServerURL=@MOZ_CRASHREPORTER_URL@/submit?id=@MOZ_APP_ID@&version=@MOZ_APP_VERSIO
+ 
+ #if MOZ_UPDATER
+ [AppUpdate]
+-URL=https://@MOZ_APPUPDATE_HOST@/update/6/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%SYSTEM_CAPABILITIES%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml
++#if 0
++; Whisper: updates come from Whisper's static update host (GitHub Pages), one
++; update.xml per channel and build target; nothing else about this copy of the
++; browser is sent. gecko/scripts/update/update-xml.py writes these files.
++#endif
++URL=https://footprintsntrails.github.io/whisper-browser/update/1/%CHANNEL%/%BUILD_TARGET%/update.xml
+ #endif

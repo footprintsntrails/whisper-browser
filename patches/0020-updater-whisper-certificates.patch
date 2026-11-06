@@ -1,0 +1,55 @@
+Whisper: the updater trusts Whisper's MAR signing certificates, not Mozilla's
+
+What: the updater is built with Whisper's own MAR signing certificates (new files in
+toolkit/mozapps/update/updater/ from gecko/overlay/) instead of Mozilla's release,
+nightly or dep certificates: whisper_primary.der and whisper_secondary.der on every
+channel except Whisper Canary's ("canary"), which trusts only whisper_canary.der.
+Why: Whisper updates itself with Firefox's own updater, and an update is applied only
+if its MAR carries a signature that one of these two certificates verifies. The
+primary certificate signs releases; the secondary one is the rotation certificate,
+whose key is kept apart, so Whisper can move to it without a manual reinstall.
+Mozilla's MARs (and anything signed with another key) are refused. The canary has a
+key of its own, used for every green build, so a canary MAR never installs on Whisper
+and a Whisper MAR never on the canary.
+Adapted from: the idea of Zen's scripts/mar_sign.sh (MPL-2.0), which copies its own
+certificate over Mozilla's; here the build file points at Whisper's files instead.
+---
+diff --git a/toolkit/mozapps/update/updater/moz.build b/toolkit/mozapps/update/updater/moz.build
+--- a/toolkit/mozapps/update/updater/moz.build
++++ b/toolkit/mozapps/update/updater/moz.build
+@@ -107,25 +107,17 @@
+ dep1_cert.script = "gen_cert_header.py:create_header"
+ dep2_cert.script = "gen_cert_header.py:create_header"
+ 
+-if CONFIG["MOZ_UPDATE_CHANNEL"] in ("beta", "release", "esr"):
+-    primary_cert.inputs += ["release_primary.der"]
+-    secondary_cert.inputs += ["release_secondary.der"]
+-elif CONFIG["MOZ_UPDATE_CHANNEL"] in (
+-    "nightly",
+-    "aurora",
+-    "nightly-elm",
+-    "nightly-pine",
+-    "nightly-cypress",
+-    "nightly-profiling",
+-    "nightly-oak",
+-    "nightly-ux",
+-    "nightly-larch",
+-):
+-    primary_cert.inputs += ["nightly_aurora_level3_primary.der"]
+-    secondary_cert.inputs += ["nightly_aurora_level3_secondary.der"]
++# Whisper: the updater trusts only Whisper's own MAR signing certificates, never
++# Mozilla's. Whisper (release and every other channel) trusts whisper_primary.der,
++# which signs the releases, and whisper_secondary.der, the rotation certificate whose
++# key is kept apart. Whisper Canary trusts only whisper_canary.der (in both places), so
++# a canary MAR never installs on Whisper and a Whisper MAR never on the canary.
++if CONFIG["MOZ_UPDATE_CHANNEL"] == "canary":
++    primary_cert.inputs += ["whisper_canary.der"]
++    secondary_cert.inputs += ["whisper_canary.der"]
+ else:
+-    primary_cert.inputs += ["dep1.der"]
+-    secondary_cert.inputs += ["dep2.der"]
++    primary_cert.inputs += ["whisper_primary.der"]
++    secondary_cert.inputs += ["whisper_secondary.der"]
+ 
+ dep1_cert.inputs += ["dep1.der"]
+ dep2_cert.inputs += ["dep2.der"]

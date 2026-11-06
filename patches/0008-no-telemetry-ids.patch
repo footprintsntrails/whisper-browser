@@ -1,0 +1,40 @@
+Whisper: never generate Telemetry client or profile IDs
+
+What: when a profile has no Telemetry IDs yet, Firefox's fixed placeholder ("canary")
+IDs are stored instead of new random ones.
+Why: with uploads off, Firefox still generates a random client ID, profile group ID
+and usage profile IDs on first start and writes them to prefs.js and
+datareporting/state.json; it only swaps them for the placeholders about a minute
+later. Whisper never creates an identifier that could single out a profile.
+---
+diff --git a/toolkit/components/telemetry/app/ClientID.sys.mjs b/toolkit/components/telemetry/app/ClientID.sys.mjs
+index 99b65edba7..749b78439e 100644
+--- a/toolkit/components/telemetry/app/ClientID.sys.mjs
++++ b/toolkit/components/telemetry/app/ClientID.sys.mjs
+@@ -363,21 +363,21 @@ var ClientIDImpl = {
+     }
+ 
+     // We're missing the ID from the DRS state file and prefs.
+-    // Generate a new one.
++    // Whisper: store the fixed placeholder IDs instead of generating new ones.
+     if (!hasCurrentClientID) {
+-      this.updateClientID(lazy.CommonUtils.generateUUID());
++      this.updateClientID(CANARY_CLIENT_ID);
+     }
+ 
+     if (!hasCurrentProfileGroupID) {
+-      this.updateProfileGroupID(lazy.CommonUtils.generateUUID());
++      this.updateProfileGroupID(CANARY_PROFILE_GROUP_ID);
+     }
+ 
+     if (!hasCurrentUsageProfileID) {
+-      this.updateUsageProfileID(lazy.CommonUtils.generateUUID());
++      this.updateUsageProfileID(CANARY_USAGE_PROFILE_ID);
+     }
+ 
+     if (!hasCurrentUsageProfileGroupID) {
+-      this.updateUsageProfileGroupID(lazy.CommonUtils.generateUUID());
++      this.updateUsageProfileGroupID(CANARY_USAGE_PROFILE_GROUP_ID);
+     }
+ 
+     this._saveDataReportingStateTask = this._saveDataReportingState();

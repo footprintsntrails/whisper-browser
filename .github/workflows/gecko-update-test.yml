@@ -1,0 +1,567 @@
+name: gecko-update-test
+
+# End-to-end test of Whisper's updates (gecko/scripts/update/update_test.py): Firefox's
+# own updater, pointed at a local update server, with throwaway signing keys.
+#
+#   linux             installs package A in a user folder, lets it find B, download,
+#                     verify and stage it, presses "Restart to update" and checks that
+#                     B runs; then checks that downgrades, replayed old MARs, MARs signed
+#                     with another key, tampered or unsigned MARs and MARs for another
+#                     channel are all refused. Runs in a network namespace whose only
+#                     server is the local update server.
+#   windows-prepare   makes the Windows MARs (signing needs the Linux signmar)
+#   windows           installs A per user with the real installer (no administrator
+#                     rights needed: %LOCALAPPDATA%\Programs\Whisper), updates it to B
+#                     the same way, and checks that a MAR signed with another key is
+#                     refused
+#
+#   (canary)          when the gecko run built Whisper Canary: installed next to Whisper
+#                     (Linux: install.sh; Windows: its installer, own folder, Start menu
+#                     entry and taskbar identity), it updates itself to its next build,
+#                     and Whisper and the canary each refuse the other's MARs
+#
+# B is the same source built again with a newer build ID (gecko-build.yml, update-test).
+# The throwaway private keys exist only inside the prepare steps; installed copies are
+# changed to trust the throwaway certificates (update_test.py patch), builds never are.
+#
+# Called by gecko.yml with the artifacts of the same run. Started by hand (or by a push
+# that changes only the test) it uses the artifacts of an earlier gecko run.
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: linux or windows
+        required: true
+        type: string
+      run_id:
+        description: Not used when called (the packages of the calling run are tested)
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Id of the gecko run whose packages to test (empty for the newest)
+        required: false
+        type: string
+      platform:
+        description: linux, windows or both
+        required: false
+        type: string
+        default: both
+  push:
+    branches: [wip/gecko, wip/updates]
+    paths:
+      - gecko/scripts/update/**
+      - gecko/scripts/smoke/marionette.py
+      - .github/workflows/gecko-update-test.yml
+
+permissions:
+  contents: read
+  # To download the packages of a gecko run
+  actions: read
+
+jobs:
+  source:
+    name: Which gecko run to test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run_id: ${{ steps.source.outputs.run_id }}
+      firefox_version: ${{ steps.source.outputs.firefox_version }}
+      linux: ${{ steps.source.outputs.linux }}
+      windows: ${{ steps.source.outputs.windows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          EVENT: ${{ github.event_name }}
+          PLATFORM: ${{ inputs.platform || 'both' }}
+          # Called from another workflow (gecko.yml): test the packages of that run.
+          CALLED: ${{ github.workflow != 'gecko-update-test' }}
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          if [ "$CALLED" = true ]; then
+            run_id=$GITHUB_RUN_ID
+          elif [ -n "$RUN_ID" ]; then
+            run_id=$RUN_ID
+          else
+            run_id=
+            for id in $(gh run list -R "$GITHUB_REPOSITORY" --workflow gecko.yml --branch "$GITHUB_REF_NAME" \
+                          --limit 30 --json databaseId -q '.[].databaseId'); do
+              if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" \
+                   -q '.artifacts[] | select(.expired | not) | .name' | grep -qx whisper-update-test-b-linux-x86_64; then
+                run_id=$id
+                break
+              fi
+            done
+          fi
+          linux=true
+          windows=true
+          if [ -z "$run_id" ]; then
+            if [ "$EVENT" != push ]; then echo "::error::no gecko run with update test builds yet"; exit 1; fi
+            # A push that also changed the build runs the update test from gecko.yml.
+            echo "::notice::no earlier gecko run with update test builds on this branch; nothing to test"
+            PLATFORM=none
+          fi
+          echo "Testing the packages of run $run_id"
+          if [ "$PLATFORM" = windows ] || [ "$PLATFORM" = none ]; then linux=false; fi
+          if [ "$PLATFORM" = linux ] || [ "$PLATFORM" = none ]; then windows=false; fi
+          {
+            echo "run_id=$run_id"
+            echo "firefox_version=$FIREFOX_VERSION"
+            echo "linux=$linux"
+            echo "windows=$windows"
+          } >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Update test (Linux)
+    needs: source
+    if: needs.source.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      V: ${{ needs.source.outputs.firefox_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{whisper-${{ env.V }}-linux-x86_64,whisper-canary-${{ env.V }}-linux-x86_64,whisper-update-test-b-linux-x86_64,whisper-mar-tools}"
+          path: dist
+          run-id: ${{ needs.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: What the browser needs to run, Xvfb, and NSS's tools for signing
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends xvfb libnss3-tools desktop-file-utils \
+            libgtk-3-0t64 libasound2t64 libx11-xcb1 libdbus-glib-1-2 libxtst6 libpci3
+      - name: Let the browser's sandbox use user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Throwaway keys, MARs and update.xml for every case; install A
+        run: |
+          (cd "dist/whisper-$V-linux-x86_64" && sha256sum -c SHA256SUMS)
+          (cd dist/whisper-update-test-b-linux-x86_64 && sha256sum -c SHA256SUMS)
+          a=$(find "dist/whisper-$V-linux-x86_64" -name 'whisper-*.tar.xz')
+          b=$(find dist/whisper-update-test-b-linux-x86_64 -name 'whisper-*.tar.xz')
+          # signmar runs with the NSS libraries of the build it came from
+          mkdir -p "$RUNNER_TEMP/nss"
+          tar -xJf "$a" -C "$RUNNER_TEMP/nss"
+          export MAR_TOOLS="$PWD/dist/whisper-mar-tools" NSS_LIBS="$RUNNER_TEMP/nss/whisper"
+          canary=
+          if [ -d "dist/whisper-canary-$V-linux-x86_64" ]; then
+            (cd "dist/whisper-canary-$V-linux-x86_64" && sha256sum -c SHA256SUMS)
+            canary=$(find "dist/whisper-canary-$V-linux-x86_64" -name 'whisper-*.tar.xz')
+          fi
+          python3 gecko/scripts/update/update_test.py prepare --a "$a" --b "$b" --bundle "$RUNNER_TEMP/bundle" \
+            ${canary:+--canary-a "$canary"}
+          # A, installed for a user with the package's own install.sh (into
+          # ~/.local/share/whisper), then made to trust the throwaway certificates
+          mkdir -p "$RUNNER_TEMP/unpacked" "$RUNNER_TEMP/home"
+          tar -xJf "$a" -C "$RUNNER_TEMP/unpacked"
+          # A home of its own; the runner sets XDG_CONFIG_HOME to its real one.
+          env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME HOME="$RUNNER_TEMP/home" \
+            "$RUNNER_TEMP/unpacked/whisper/install.sh"
+          python3 gecko/scripts/update/update_test.py patch --bundle "$RUNNER_TEMP/bundle" \
+            --app "$RUNNER_TEMP/home/.local/share/whisper"
+          if [ -n "$canary" ]; then
+            # The canary next to it, the same way (into ~/.local/share/whisper-canary)
+            mkdir -p "$RUNNER_TEMP/unpacked-canary"
+            tar -xJf "$canary" -C "$RUNNER_TEMP/unpacked-canary"
+            env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME HOME="$RUNNER_TEMP/home" \
+              "$RUNNER_TEMP/unpacked-canary/whisper/install.sh"
+            python3 gecko/scripts/update/update_test.py patch --canary --bundle "$RUNNER_TEMP/bundle" \
+              --app "$RUNNER_TEMP/home/.local/share/whisper-canary"
+            echo "CANARY_APP=$RUNNER_TEMP/home/.local/share/whisper-canary" >> "$GITHUB_ENV"
+          fi
+      - name: Update test
+        run: |
+          gecko/scripts/update/run-update-test.sh "$RUNNER_TEMP/bundle" "$RUNNER_TEMP/home/.local/share/whisper" \
+            "$RUNNER_TEMP/work" "$RUNNER_TEMP/update-test"
+      - name: The installed copy updated itself; install.sh uninstalls, keeping the profile
+        run: |
+          b=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["build_b"])' "$RUNNER_TEMP/bundle/cases.json")
+          export HOME="$RUNNER_TEMP/home"
+          # The runner sets XDG_CONFIG_HOME to its real home; install.sh must use this one.
+          unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
+          app="$HOME/.local/share/whisper"
+          grep -qx "BuildID=$b" "$app/application.ini" || { echo "::error::the install was not updated to B ($b)"; exit 1; }
+          if [ -n "${CANARY_APP:-}" ]; then
+            cb=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["build_canary_b"])' "$RUNNER_TEMP/bundle/cases.json")
+            grep -qx "BuildID=$cb" "$CANARY_APP/application.ini" || { echo "::error::the canary was not updated to $cb"; exit 1; }
+            desktop-file-validate "$HOME/.local/share/applications/whisper-canary.desktop"
+            grep -qx 'Name=Whisper Canary' "$HOME/.local/share/applications/whisper-canary.desktop"
+            grep -qx 'StartupWMClass=whisper-canary' "$HOME/.local/share/applications/whisper-canary.desktop"
+            test -L "$HOME/.local/bin/whisper-canary"
+            # The canary goes; Whisper and its profile stay.
+            mkdir -p "$HOME/.config/whisper canary/c.default"
+            "$CANARY_APP/install.sh" --uninstall --purge
+            test ! -e "$CANARY_APP" && test ! -e "$HOME/.config/whisper canary"
+            test -x "$app/whisper" && test -f "$HOME/.local/share/applications/whisper.desktop"
+            echo "install.sh: the canary installs next to Whisper and goes without touching it"
+          fi
+          desktop-file-validate "$HOME/.local/share/applications/whisper.desktop"
+          cat "$HOME/.local/share/applications/whisper.desktop"
+          for size in 16 32 48 64 128; do test -f "$HOME/.local/share/icons/hicolor/${size}x$size/apps/whisper.png"; done
+          test -L "$HOME/.local/bin/whisper"
+          "$HOME/.local/bin/whisper" --version
+          # A profile, and another program's files next to Whisper's cache
+          mkdir -p "$HOME/.config/whisper/whisper/abc.default" "$HOME/.cache/whisper/whisper/abc.default"
+          echo keep > "$HOME/.config/whisper/whisper/abc.default/prefs.js"
+          echo model > "$HOME/.cache/whisper/base.pt"
+          "$app/install.sh" --uninstall
+          test ! -e "$app"
+          test ! -e "$HOME/.local/share/applications/whisper.desktop"
+          test ! -e "$HOME/.local/bin/whisper"
+          test -f "$HOME/.config/whisper/whisper/abc.default/prefs.js"
+          "$RUNNER_TEMP/unpacked/whisper/install.sh"
+          test -x "$app/whisper"
+          "$app/install.sh" --uninstall --purge
+          test ! -e "$app"
+          test ! -e "$HOME/.config/whisper"
+          test ! -e "$HOME/.cache/whisper/whisper"
+          test -f "$HOME/.cache/whisper/base.pt"
+          echo "install.sh: install, update in place, uninstall (profile kept), purge: all as expected"
+      - name: Summary
+        if: always()
+        run: |
+          cp "$RUNNER_TEMP/bundle/cases.json" "$RUNNER_TEMP/update-test/" 2>/dev/null || true
+          {
+            echo "## Update test (Linux)"
+            cat "$RUNNER_TEMP/update-test/report.md" 2>/dev/null || echo "no report"
+            echo
+            echo "MAR sizes (bytes):"
+            echo '```'
+            python3 -c 'import json,sys; [print(k, v) for k, v in json.load(open(sys.argv[1]))["mar_sizes"].items()]' \
+              "$RUNNER_TEMP/bundle/cases.json" 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: update-test-linux
+          path: ${{ runner.temp }}/update-test/
+          if-no-files-found: ignore
+
+  windows-prepare:
+    name: Update test (Windows MARs)
+    needs: source
+    if: needs.source.outputs.windows == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      V: ${{ needs.source.outputs.firefox_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{whisper-${{ env.V }}-windows-x86_64,whisper-canary-${{ env.V }}-windows-x86_64,whisper-update-test-b-windows-x86_64,whisper-mar-tools,whisper-${{ env.V }}-linux-x86_64}"
+          path: dist
+          run-id: ${{ needs.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: NSS's tools for signing
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libnss3-tools
+      - name: Throwaway keys, MARs and update.xml
+        run: |
+          (cd "dist/whisper-$V-windows-x86_64" && sha256sum -c SHA256SUMS)
+          (cd dist/whisper-update-test-b-windows-x86_64 && sha256sum -c SHA256SUMS)
+          mkdir -p "$RUNNER_TEMP/nss"
+          tar -xJf "$(find "dist/whisper-$V-linux-x86_64" -name 'whisper-*.tar.xz')" -C "$RUNNER_TEMP/nss"
+          export MAR_TOOLS="$PWD/dist/whisper-mar-tools" NSS_LIBS="$RUNNER_TEMP/nss/whisper"
+          canary=
+          if [ -d "dist/whisper-canary-$V-windows-x86_64" ]; then
+            (cd "dist/whisper-canary-$V-windows-x86_64" && sha256sum -c SHA256SUMS)
+            canary=$(find "dist/whisper-canary-$V-windows-x86_64" -name 'whisper-*.win64.zip')
+          fi
+          python3 gecko/scripts/update/update_test.py prepare \
+            --a "$(find "dist/whisper-$V-windows-x86_64" -name 'whisper-*.win64.zip')" \
+            --b "$(find dist/whisper-update-test-b-windows-x86_64 -name 'whisper-*.win64.zip')" \
+            --bundle "$RUNNER_TEMP/bundle" ${canary:+--canary-a "$canary"}
+      # Certificates (public), MARs and update.xml files only: no keys.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: update-test-windows-bundle
+          path: ${{ runner.temp }}/bundle/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  windows:
+    name: Update test (Windows)
+    needs: [source, windows-prepare]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      V: ${{ needs.source.outputs.firefox_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: whisper-${{ env.V }}-windows-x86_64
+          path: dist
+          run-id: ${{ needs.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      # The canary is not built on tags; nothing to download then.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: whisper-canary-${{ env.V }}-windows-x86_64
+          path: dist-canary
+          run-id: ${{ needs.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: update-test-windows-bundle
+          path: ${{ runner.temp }}/bundle
+      - name: Install A silently, with the installer's defaults (for this user only)
+        run: |
+          $installer = Get-ChildItem dist\whisper-*.installer.exe | Select-Object -First 1
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Whisper'
+          $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          "installer exit code $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "the installer exited with $($p.ExitCode)" }
+          foreach ($f in 'whisper.exe', 'updater.exe', 'update-settings.ini', 'uninstall\helper.exe') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "$f is missing in $dir (not installed per user?)" }
+          }
+          foreach ($pf in $env:ProgramFiles, ${env:ProgramFiles(x86)}) {
+            if (Test-Path (Join-Path $pf 'Whisper')) { throw "Whisper was installed in $pf" }
+          }
+          if (Get-ChildItem $dir -Filter 'maintenanceservice*' -ErrorAction SilentlyContinue) { throw 'a maintenance service was installed' }
+          Get-Content (Join-Path $dir 'update-settings.ini')
+          # Apps & Features: an entry for this user, none for the machine
+          $key = 'Software\Microsoft\Windows\CurrentVersion\Uninstall'
+          $mine = Get-ChildItem "HKCU:\$key" | Get-ItemProperty -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Whisper (*' }
+          if (-not $mine) { throw 'no Apps & Features entry for this user' }
+          $mine | Format-List DisplayName, DisplayVersion, Publisher, InstallLocation, UninstallString
+          $version = (Select-String -Path gecko\release.env -Pattern '^WHISPER_VERSION=(.*)$').Matches[0].Groups[1].Value
+          if ($mine.DisplayVersion -ne $version) { throw "Apps & Features shows version $($mine.DisplayVersion), not $version" }
+          if ($mine.Publisher -ne 'Whisper') { throw "publisher is $($mine.Publisher)" }
+          foreach ($view in 'HKLM:\SOFTWARE', 'HKLM:\SOFTWARE\WOW6432Node') {
+            $machine = Get-ChildItem "$view\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
+              Get-ItemProperty | Where-Object { $_.DisplayName -like 'Whisper*' }
+            if ($machine) { throw "a machine-wide Apps & Features entry was written under $view" }
+          }
+          # Shortcuts: this user's Start menu and desktop, pointing at the installed program
+          $shell = New-Object -ComObject WScript.Shell
+          foreach ($link in (Join-Path ([Environment]::GetFolderPath('Programs')) 'Whisper.lnk'),
+                            (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Whisper.lnk')) {
+            if (-not (Test-Path $link)) { throw "missing shortcut $link" }
+            $target = $shell.CreateShortcut($link).TargetPath
+            "$link -> $target"
+            if ($target -ne (Join-Path $dir 'whisper.exe')) { throw "$link points at $target" }
+          }
+          if (Test-Path (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Whisper.lnk')) { throw 'a Start menu shortcut for all users was made' }
+          python gecko/scripts/update/update_test.py patch --bundle "$env:RUNNER_TEMP\bundle" --app $dir
+          if ($LASTEXITCODE -ne 0) { throw "patching the updater failed" }
+          "APP=$dir" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Install Whisper Canary next to it (when this run built it)
+        run: |
+          $installer = Get-ChildItem dist-canary -Recurse -Filter 'whisper-*.installer.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $installer) { "no canary in this gecko run"; exit 0 }
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Whisper Canary'
+          $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the canary installer exited with $($p.ExitCode)" }
+          if (-not (Test-Path (Join-Path $dir 'whisper.exe'))) { throw "the canary is not in $dir" }
+          if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\Whisper\whisper.exe'))) { throw 'installing the canary removed Whisper' }
+          Get-Content (Join-Path $dir 'update-settings.ini')
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+          $entries = Get-ChildItem $key | Get-ItemProperty -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Whisper*' }
+          $entries | Format-Table DisplayName, DisplayVersion, InstallLocation
+          if (-not ($entries | Where-Object { $_.DisplayName -like 'Whisper Canary*' })) { throw 'no Apps & Features entry for Whisper Canary' }
+          if (-not ($entries | Where-Object { $_.DisplayName -like 'Whisper (*' })) { throw "Whisper's Apps & Features entry is gone" }
+          # Own Start menu entry, and a taskbar identity (AppUserModelID) of its own, so
+          # both can run at once with separate taskbar buttons.
+          # The installer derives the ID from the install folder (InitHashAppModelId) and
+          # records it under Software\Mozilla\<app>\TaskBarIDs; the shortcuts carry it.
+          $shell = New-Object -ComObject Shell.Application
+          $folder = [Environment]::GetFolderPath('Programs')
+          $taskbar = @{}
+          Get-ChildItem 'HKCU:\Software\Mozilla' -ErrorAction SilentlyContinue | ForEach-Object {
+            $k = Join-Path $_.PSPath 'TaskBarIDs'
+            if (Test-Path $k) { (Get-ItemProperty $k).PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object { $taskbar[$_.Name.TrimEnd('\')] = $_.Value } }
+          }
+          $taskbar.GetEnumerator() | Format-Table Name, Value
+          $ids = @{}
+          foreach ($pair in @(@('Whisper', 'Programs\Whisper'), @('Whisper Canary', 'Programs\Whisper Canary'))) {
+            $name = $pair[0]
+            $link = Join-Path $folder "$name.lnk"
+            if (-not (Test-Path $link)) { throw "missing Start menu shortcut $link" }
+            $fromLink = $shell.NameSpace($folder).ParseName("$name.lnk").ExtendedProperty('System.AppUserModel.ID')
+            $fromRegistry = $taskbar[(Join-Path $env:LOCALAPPDATA $pair[1])]
+            "$name.lnk: AppUserModelID '$fromLink'; TaskBarIDs '$fromRegistry'"
+            $ids[$name] = if ($fromLink) { $fromLink } else { $fromRegistry }
+          }
+          if (-not $ids['Whisper'] -or -not $ids['Whisper Canary']) { throw 'no taskbar identity found for Whisper or Whisper Canary' }
+          if ($ids['Whisper Canary'] -eq $ids['Whisper']) { throw 'Whisper and Whisper Canary share a taskbar identity' }
+          python gecko/scripts/update/update_test.py patch --canary --bundle "$env:RUNNER_TEMP\bundle" --app $dir
+          if ($LASTEXITCODE -ne 0) { throw "patching the canary's updater failed" }
+          "CANARY_APP=$dir" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Update test
+        run: |
+          $cases = 'update,untrusted-key'
+          $canary = @()
+          if ($env:CANARY_APP) {
+            $cases += ',canary-mar-on-release,canary-update,release-mar-on-canary'
+            $canary = @('--canary-app', $env:CANARY_APP)
+          }
+          python gecko/scripts/update/update_test.py run --bundle "$env:RUNNER_TEMP\bundle" --app $env:APP `
+            --work "$env:RUNNER_TEMP\work" --out "$env:RUNNER_TEMP\update-test" --cases $cases --headless @canary
+          if ($LASTEXITCODE -ne 0) { throw "update test failed" }
+      - name: Uninstall keeps the profile; /PURGE removes it
+        run: |
+          $dir = $env:APP
+          $installer = Get-ChildItem dist\whisper-*.installer.exe | Select-Object -First 1
+          function Uninstall([string[]]$arguments) {
+            $start = Get-Date
+            Start-Process -FilePath (Join-Path $dir 'uninstall\helper.exe') -ArgumentList $arguments -Wait
+            # helper.exe hands over to a copy of itself in %TEMP% and returns at once; that
+            # copy deletes whisper.exe first, then the shortcuts and registry entries, the
+            # profile (with /PURGE) and the program's other files, its own original
+            # (uninstall\helper.exe) last. Wait for that, for up to 90 seconds.
+            $purge = $arguments -contains '/PURGE'
+            for ($i = 0; $i -lt 90; $i++) {
+              $done = -not (Test-Path (Join-Path $dir 'uninstall\helper.exe')) -and -not (Test-Path (Join-Path $dir 'whisper.exe'))
+              if ($purge) { $done = $done -and -not (Test-Path (Join-Path $env:APPDATA 'Whisper')) -and -not (Test-Path (Join-Path $env:LOCALAPPDATA 'Whisper')) }
+              if ($done) { break }
+              if ($i -eq 3) {
+                Get-Process -ErrorAction SilentlyContinue | Where-Object { try { $_.StartTime -ge $start } catch { $false } } |
+                  ForEach-Object { "uninstalling: process $($_.ProcessName) ($($_.Path))" }
+              }
+              Start-Sleep 1
+            }
+            "uninstall $($arguments -join ' '): $([int]((Get-Date) - $start).TotalSeconds) s"
+            if (Test-Path (Join-Path $dir 'whisper.exe')) { throw 'whisper.exe is still there after uninstalling' }
+          }
+          $problems = @()
+          $wsh = New-Object -ComObject WScript.Shell
+          $links = @((Join-Path ([Environment]::GetFolderPath('Programs')) 'Whisper.lnk'),
+                     (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Whisper.lnk'))
+          function Show-Shortcuts([string]$when) {
+            "--- shortcuts $when"
+            foreach ($link in $links) {
+              if (Test-Path $link) { $l = $wsh.CreateShortcut($link); "$link -> '$($l.TargetPath)' in '$($l.WorkingDirectory)'" }
+              else { "$($link): none" }
+            }
+            Get-Content (Join-Path $dir 'uninstall\shortcuts_log.ini') -ErrorAction SilentlyContinue
+            Get-ChildItem "$env:ProgramData\Mozilla*" -Recurse -Filter '*_shortcuts.ini' -ErrorAction SilentlyContinue |
+              ForEach-Object { "$($_.FullName):"; Get-Content $_.FullName }
+          }
+          function Check-Gone([string]$when) {
+            $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+            if (Get-ChildItem $key | Get-ItemProperty -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Whisper (*' }) {
+              $script:problems += "$($when): the Apps & Features entry is still there"
+            }
+            foreach ($link in $links) {
+              if (-not (Test-Path $link)) { continue }
+              # Firefox points the user's Start menu shortcut at whichever copy of it ran
+              # last; the test runs copies of Whisper from other folders, and the
+              # uninstaller rightly leaves a shortcut alone that points somewhere else.
+              $target = $wsh.CreateShortcut($link).TargetPath
+              if ($target -like "$dir\*") { $script:problems += "$($when): $link (to $target) is still there" }
+              else { "note: $link points at $target, a test copy, not at $dir; left alone" }
+            }
+          }
+          $profileRoot = Join-Path $env:APPDATA 'Whisper'
+          New-Item -ItemType Directory -Force (Join-Path $profileRoot 'Whisper\Profiles\test.default') | Out-Null
+          Set-Content (Join-Path $profileRoot 'Whisper\Profiles\test.default\prefs.js') 'keep me'
+          # 1. The install the update test updated to B
+          Show-Shortcuts 'before uninstalling the updated install'
+          Uninstall @('/S')
+          Show-Shortcuts 'after'
+          Check-Gone 'uninstalling the updated install'
+          if (-not (Test-Path (Join-Path $profileRoot 'Whisper\Profiles\test.default\prefs.js'))) { $problems += 'uninstalling removed the profile' }
+          # 2. A fresh install, uninstalled with /PURGE
+          Get-ChildItem $links -ErrorAction SilentlyContinue | Remove-Item
+          $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "reinstalling exited with $($p.ExitCode)" }
+          Show-Shortcuts 'before uninstalling a fresh install'
+          Uninstall @('/S', '/PURGE')
+          Show-Shortcuts 'after'
+          Check-Gone 'uninstalling a fresh install'
+          $purgeLeft = @()
+          foreach ($left in $profileRoot, (Join-Path $env:LOCALAPPDATA 'Whisper')) {
+            if (Test-Path $left) {
+              $purgeLeft += $left
+              "--- left in $left (now $(Get-Date -Format HH:mm:ss)):"
+              Get-ChildItem $left -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 25 |
+                ForEach-Object { "$($_.LastWriteTime.ToString('HH:mm:ss'))  $($_.FullName)" }
+            }
+          }
+          Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'whisper*' -or $_.ProcessName -like 'updater*' } |
+            ForEach-Object { "still running: $($_.ProcessName) $($_.Id) $($_.Path)" }
+          # The uninstaller notes the reinstall marker and what it did with the profile
+          # (patches/0025).
+          $marker = Get-ItemProperty 'HKCU:\Software\Whisper\Whisper' -ErrorAction SilentlyContinue
+          "reinstall marker: '$($marker.'Uninstalled-release')'; profile on uninstall: '$($marker.'ProfileOnUninstall-release')'"
+          if (-not $marker.'Uninstalled-release') { $problems += 'the uninstaller wrote no reinstall marker (Software\Whisper\Whisper)' }
+          foreach ($left in $purgeLeft) { $problems += "/PURGE left $left" }
+          if ($problems) { $problems | ForEach-Object { "::error::$_" }; throw "uninstalling: $($problems.Count) problem(s)" }
+          "uninstall: program, entry and shortcuts gone, profile kept; /PURGE: profile gone too"
+          if ($env:CANARY_APP) {
+            if (-not (Test-Path (Join-Path $env:CANARY_APP 'whisper.exe'))) { throw "uninstalling Whisper removed Whisper Canary" }
+            "Whisper Canary is still installed"
+          }
+      - name: A user without administrator rights can install
+        timeout-minutes: 8
+        run: |
+          $installer = Get-ChildItem dist\whisper-*.installer.exe | Select-Object -First 1
+          $name = 'whispertest'
+          # At most 14 characters, or "net user" stops to ask about old Windows versions
+          $password = 'Wt!' + [Guid]::NewGuid().ToString('N').Substring(0, 8) + 'a1'
+          net user $name $password /add | Out-Null
+          $groups = (net user $name) -join ' '
+          if ($groups -match 'Administrators') { throw "$name is an administrator" }
+          $cred = New-Object System.Management.Automation.PSCredential($name, (ConvertTo-SecureString $password -AsPlainText -Force))
+          try {
+            # Not -Wait: that waits for every process the installer leaves running too.
+            $p = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Credential $cred -LoadUserProfile `
+              -WorkingDirectory $env:SystemRoot -PassThru
+          } catch {
+            "::warning::could not start a process as a standard user on this runner: $_"
+            exit 0
+          }
+          if (-not $p.WaitForExit(240000)) {
+            "::warning::the standard user's installer did not finish within 4 minutes; stopping it"
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          } else {
+            "installer exit code $($p.ExitCode)"
+          }
+          $userHome = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "*\$name" }).LocalPath
+          if (-not $userHome) { $userHome = Join-Path (Split-Path $env:USERPROFILE) $name }
+          $exe = Join-Path $userHome 'AppData\Local\Programs\Whisper\whisper.exe'
+          for ($i = 0; $i -lt 30 -and -not (Test-Path $exe); $i++) { Start-Sleep 2 }
+          if (-not (Test-Path $exe)) {
+            # Seen on GitHub's runners: an installer started with another user's
+            # credentials from the job's session never finishes (it gets no desktop of
+            # its own there), so this cannot prove or disprove a standard user's install.
+            "::warning::not verified: the standard user's install did not complete on this runner ($exe missing)"
+            exit 0
+          }
+          "standard user $name installed Whisper into $exe without administrator rights"
+      - name: Summary
+        if: always()
+        run: |
+          "## Update test (Windows)" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          Get-Content "$env:RUNNER_TEMP\update-test\report.md" -ErrorAction SilentlyContinue | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: update-test-windows
+          path: ${{ runner.temp }}/update-test/
+          if-no-files-found: ignore

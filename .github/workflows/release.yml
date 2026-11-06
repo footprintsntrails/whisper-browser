@@ -1,0 +1,274 @@
+name: release
+
+# A pushed tag like v0.1.0 builds Whisper's browser for Linux and Windows, runs the smoke
+# and update tests (gecko.yml) as the gate, makes complete MARs, signs them with the
+# release key, and publishes:
+#   - a GitHub release with Whisper-Setup.exe, whisper-windows-x86_64.zip,
+#     whisper-linux-x86_64.tar.xz, the signed MARs, the update.xml files and SHA256SUMS;
+#   - update.xml for every build target on GitHub Pages, where installed copies look for
+#     updates (gecko/release.env, update/1/<channel>/<build target>/update.xml).
+#
+# The tag must be v + WHISPER_VERSION from gecko/release.env. Only the "sign" job sees
+# the release key: the secret MAR_SIGNING_KEY (PEM, RSA-4096) of the "release"
+# environment. It must belong to the primary certificate built into the updater.
+#
+# Run by hand ("Run workflow") it is a dry run by default: everything is built, tested
+# and signed with a throwaway key, the files are kept as the workflow artifact
+# "release-dry-run", and nothing is published.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Dry run (build, test, sign with a throwaway key, publish nothing)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # shellcheck source=gecko/release.env
+          . gecko/release.env
+          version=$WHISPER_VERSION
+          publish=false
+          if [ "$REF_TYPE" = tag ] && { [ "$EVENT" = push ] || [ "$DRY_RUN" = false ]; }; then
+            publish=true
+            if [ "$REF_NAME" != "v$version" ]; then
+              echo "::error::tag $REF_NAME does not match WHISPER_VERSION=$version in gecko/release.env"
+              exit 1
+            fi
+          elif [ "$EVENT" = workflow_dispatch ] && [ "$DRY_RUN" = false ]; then
+            echo "::error::publishing needs a v* tag: run this workflow on a tag, or as a dry run"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "Whisper $version (publish: $publish)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Builds, smoke tests and the end-to-end update test: nothing is signed unless all pass.
+  gecko:
+    name: Build and test
+    needs: check
+    # gecko.yml's jobs ask for these; on a tag only the build and test jobs run (each with
+    # contents: read, the builds also actions: write to keep one compiler cache). The
+    # canary jobs that would use the rest run on branch pushes only.
+    permissions:
+      contents: write
+      actions: write
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/gecko.yml
+
+  assemble:
+    name: Release files and MARs
+    needs: [check, gecko]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Version
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{whisper-${{ env.FIREFOX_VERSION }}-linux-x86_64,whisper-${{ env.FIREFOX_VERSION }}-windows-x86_64,whisper-mar-tools}"
+          path: build
+      - name: Release files, checked, and complete MARs
+        run: |
+          (cd "build/whisper-$FIREFOX_VERSION-linux-x86_64" && sha256sum -c SHA256SUMS)
+          (cd "build/whisper-$FIREFOX_VERSION-windows-x86_64" && sha256sum -c SHA256SUMS)
+          w="build/whisper-$FIREFOX_VERSION-windows-x86_64"
+          MAR_TOOLS="$PWD/build/whisper-mar-tools" python3 gecko/scripts/update/release.py assemble \
+            --linux "$(find "build/whisper-$FIREFOX_VERSION-linux-x86_64" -name 'whisper-*.tar.xz')" \
+            --windows-zip "$(find "$w" -name 'whisper-*.win64.zip')" \
+            --windows-installer "$(find "$w" -name 'whisper-*.installer.exe')" \
+            --dist dist
+          ls -l dist dist/unsigned
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-unsigned
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  # Signing: the only job that sees the release key. It runs nothing but Mozilla's
+  # signmar from this run's build and the checks around it.
+  sign:
+    name: Sign (release key)
+    needs: [check, assemble]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-unsigned
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: whisper-mar-tools
+          path: mar-tools
+      - name: NSS's tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libnss3-tools
+      - name: Sign the MARs, update.xml, SHA256SUMS
+        env:
+          MAR_SIGNING_KEY: ${{ secrets.MAR_SIGNING_KEY }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          if [ -z "$MAR_SIGNING_KEY" ]; then
+            echo "::error::the release environment has no MAR_SIGNING_KEY secret"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/nss"
+          tar -xJf dist/whisper-linux-x86_64.tar.xz -C "$RUNNER_TEMP/nss"
+          keydir=$(umask 077 && mktemp -d)
+          trap 'rm -rf "$keydir"' EXIT
+          (umask 077 && printf '%s\n' "$MAR_SIGNING_KEY" > "$keydir/key.pem")
+          unset MAR_SIGNING_KEY
+          MAR_TOOLS="$PWD/mar-tools" NSS_LIBS="$RUNNER_TEMP/nss/whisper" python3 gecko/scripts/update/release.py sign \
+            --key "$keydir/key.pem" --cert gecko/overlay/toolkit/mozapps/update/updater/whisper_primary.der \
+            --dist dist --tag "$TAG"
+          (cd dist && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: |
+            dist/
+            release-notes.md
+          if-no-files-found: error
+          compression-level: 0
+
+  sign-dry-run:
+    name: Sign (throwaway key, dry run)
+    needs: [check, assemble]
+    if: needs.check.outputs.publish != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-unsigned
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: whisper-mar-tools
+          path: mar-tools
+      - name: NSS's tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libnss3-tools
+      - name: Sign with a throwaway key, update.xml, SHA256SUMS, update host
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/nss"
+          tar -xJf dist/whisper-linux-x86_64.tar.xz -C "$RUNNER_TEMP/nss"
+          keydir=$(umask 077 && mktemp -d)
+          trap 'rm -rf "$keydir"' EXIT
+          openssl req -x509 -newkey rsa:4096 -nodes -sha384 -days 1 -subj "/CN=Whisper dry run (not for release)" \
+            -keyout "$keydir/key.pem" -outform DER -out "$keydir/cert.der" 2> /dev/null
+          MAR_TOOLS="$PWD/mar-tools" NSS_LIBS="$RUNNER_TEMP/nss/whisper" python3 gecko/scripts/update/release.py sign \
+            --key "$keydir/key.pem" --cert "$keydir/cert.der" --dist dist --tag "$TAG" --dry-run
+          (cd dist && sha256sum -c SHA256SUMS)
+          python3 gecko/scripts/update/site.py --release dist --site site
+          find site -type f | sort
+          {
+            echo "## Dry run: Whisper $TAG"
+            echo "Signed with a throwaway key; nothing was published."
+            echo '```'
+            ls -l dist
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dry-run
+          path: |
+            dist/
+            site/
+            release-notes.md
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish the GitHub release
+    needs: [check, sign]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: .
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          (cd dist && sha256sum -c SHA256SUMS)
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --latest \
+            --title "Whisper $VERSION" \
+            --notes-file release-notes.md
+
+  # The update host goes live only after the files it points to are published.
+  pages:
+    name: Update host
+    needs: [check, publish]
+    if: needs.check.outputs.publish == 'true'
+    # Built from the newest release (this one) and Whisper Canary, so the canary's
+    # update.xml stays on the host (pages.yml).
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

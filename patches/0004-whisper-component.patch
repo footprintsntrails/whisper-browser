@@ -1,0 +1,22 @@
+Whisper: build browser/components/whisper
+
+What: adds Whisper's own directory to the build.
+Why: everything Whisper adds to the browser lives in new files in that directory
+(default prefs, the Cast stylesheets and Inter font, the tab sidebar modes, the
+bundled uBlock Origin). Whisper.manifest there hooks it into Firefox's window lifecycle
+categories, so no Firefox file needs to change to load it; this line is the only entry.
+---
+diff --git a/browser/components/moz.build b/browser/components/moz.build
+index 9a95522578..85309642e6 100644
+--- a/browser/components/moz.build
++++ b/browser/components/moz.build
+@@ -81,6 +81,9 @@ DIRS += [
+     "webrtc",
+ ]
+ 
++# Whisper's own interface, prefs and bundled uBlock Origin (all new files).
++DIRS += ["whisper"]
++
+ DIRS += ["build"]
+ 
+ if CONFIG["MOZ_SELECTABLE_PROFILES"]:

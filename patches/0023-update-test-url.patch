@@ -1,0 +1,31 @@
+Whisper: an update address for the update test, on this computer only
+
+What: if the pref whisper.update.testURL holds an http address on 127.0.0.1 or
+[::1] (with a port), the update service checks there instead of Whisper's update host.
+Any other value is ignored.
+Why: the end-to-end update test (gecko/scripts/update/) serves update.xml and MARs
+from a local server inside a network namespace and points a test profile at it. The
+pref cannot send update checks to another computer, and an update found there must
+still pass the same signature, channel and version checks.
+---
+diff --git a/toolkit/mozapps/update/UpdateService.sys.mjs b/toolkit/mozapps/update/UpdateService.sys.mjs
+index d1eeb75f30..8709999222 100644
+--- a/toolkit/mozapps/update/UpdateService.sys.mjs
++++ b/toolkit/mozapps/update/UpdateService.sys.mjs
+@@ -5505,6 +5505,16 @@ export class CheckerService {
+     let url = Services.appinfo.updateURL;
+     let updatePin;
+ 
++    // Whisper: the update test (gecko/scripts/update/) serves updates from this
++    // computer. Only an http address on the loopback interface is accepted, so
++    // this pref cannot send update checks anywhere else, and every update still
++    // has to carry Whisper's signature.
++    let testURL = Services.prefs.getStringPref("whisper.update.testURL", "");
++    if (/^http:\/\/(127\.0\.0\.1|\[::1\]):\d+\//.test(testURL)) {
++      LOG("CheckerService:getUpdateURL - using whisper.update.testURL");
++      url = testURL;
++    }
++
+     if (Services.policies) {
+       let policies = Services.policies.getActivePolicies();
+       if (policies) {

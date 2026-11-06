@@ -1,0 +1,31 @@
+Whisper: Windows file details name Whisper, not Mozilla
+
+What: the version resource of every Windows program and library (Properties >
+Details in Explorer, also shown by Task Manager and installers) gets the vendor
+(Whisper) as company, the plain licence line as copyright, and no trademark line.
+Why: Firefox's defaults and module.ver files write "Mozilla Corporation" and "Firefox
+is a Trademark of The Mozilla Foundation." into whisper.exe, xul.dll and the others;
+Whisper must not show Mozilla's trademarks or speak for Mozilla.
+---
+diff --git a/config/create_rc.py b/config/create_rc.py
+index a3cabd5064..aa5efa805c 100644
+--- a/config/create_rc.py
++++ b/config/create_rc.py
+@@ -299,13 +299,14 @@ def generate_module_rc():
+         ),
+         fileflags=" | ".join(flags),
+         comment=overrides.get("WIN32_MODULE_COMMENT", ""),
+-        copyright=overrides.get("WIN32_MODULE_COPYRIGHT", "License: MPL 2"),
+-        company=overrides.get("WIN32_MODULE_COMPANYNAME", "Mozilla Foundation"),
++        # Whisper: no Mozilla names in the file details of any binary.
++        copyright="License: MPL 2",
++        company=buildconfig.substs.get("MOZ_APP_VENDOR", ""),
+         description=overrides.get("WIN32_MODULE_DESCRIPTION", ""),
+         mfversion=overrides.get("WIN32_MODULE_FILEVERSION_STRING", milestone_string),
+         mpversion=overrides.get("WIN32_MODULE_PRODUCTVERSION_STRING", milestone_string),
+         module=overrides.get("WIN32_MODULE_NAME", ""),
+-        trademarks=overrides.get("WIN32_MODULE_TRADEMARKS", "Mozilla"),
++        trademarks="",
+         binary=overrides.get("WIN32_MODULE_ORIGINAL_FILENAME", binary),
+         productname=overrides.get("WIN32_MODULE_PRODUCTNAME", display_name),
+         buildid=buildid,

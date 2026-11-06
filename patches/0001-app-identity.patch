@@ -1,0 +1,51 @@
+Whisper: app identity (vendor name, Firefox User-Agent, --version)
+
+What: sets the application vendor to Whisper, keeps "Firefox" as the application name
+in the User-Agent string, and makes --version print "Whisper 159.0.1" instead of
+"Whisper Whisper 159.0.1".
+Why: these values can only be set by the build project (browser/moz.configure), not
+from a mozconfig. With the vendor set to Whisper, Whisper keeps its profiles in its own
+folder and never opens a Firefox profile. The User-Agent stays exactly Firefox's, so
+web pages cannot tell Whisper apart from Firefox of the same version by it.
+Adapted from: LibreWolf's moz-configure.patch, firefox-in-UA.patch and the --version
+part of vendor-name.patch (MPL-2.0).
+---
+diff --git a/browser/moz.configure b/browser/moz.configure
+index 8979a2e4e8..055df85e58 100644
+--- a/browser/moz.configure
++++ b/browser/moz.configure
+@@ -11,7 +11,9 @@ imply_option("MOZ_NORMANDY", True)
+ imply_option("MOZ_PROFILE_MIGRATOR", True)
+ 
+ 
+-imply_option("MOZ_APP_VENDOR", "Mozilla")
++imply_option("MOZ_APP_VENDOR", "Whisper")
++# Web pages and servers see the same User-Agent as Firefox of this version.
++imply_option("MOZ_APP_UA_NAME", "Firefox")
+ imply_option("MOZ_APP_ID", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}")
+ # Include the DevTools client, not just the server (which is the default)
+ imply_option("MOZ_DEVTOOLS", "all")
+diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
+index 003fc8545a..fdf8bcc141 100644
+--- a/toolkit/xre/nsAppRunner.cpp
++++ b/toolkit/xre/nsAppRunner.cpp
+@@ -2250,9 +2250,6 @@ static void DumpHelp() {
+ }
+ 
+ static inline void DumpVersion() {
+-  if (gAppData->vendor && *gAppData->vendor) {
+-    printf("%s ", (const char*)gAppData->vendor);
+-  }
+   printf("%s ", (const char*)gAppData->name);
+ 
+   // Use the displayed version
+@@ -2266,9 +2263,6 @@ static inline void DumpVersion() {
+ }
+ 
+ static inline void DumpFullVersion() {
+-  if (gAppData->vendor && *gAppData->vendor) {
+-    printf("%s ", (const char*)gAppData->vendor);
+-  }
+   printf("%s ", (const char*)gAppData->name);
+ 
+   // Use the displayed version

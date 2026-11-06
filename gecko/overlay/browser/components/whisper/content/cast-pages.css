@@ -1,0 +1,17 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Cast colours for the browser's own pages (it was the profile kit's userContent.css).
+ * Registered once as a user sheet by WhisperUI.sys.mjs. Every rule is limited to these
+ * about: pages, which web pages cannot embed, so web pages look and measure exactly as
+ * in Firefox. */
+
+@-moz-document url("about:home"), url("about:newtab"), url("about:privatebrowsing") {
+  :root, body {
+    --newtab-background-color: #111316 !important;
+    --newtab-background-color-secondary: #1b1f23 !important;
+    --newtab-text-primary-color: #d3d9df !important;
+    background-color: #111316 !important;
+  }
+}

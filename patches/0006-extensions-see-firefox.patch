@@ -1,0 +1,40 @@
+Whisper: extensions see Firefox, and cannot set an uninstall page
+
+What: runtime.getBrowserInfo() answers "Firefox" by "Mozilla" (unless the pref
+whisper.extensions.reportFirefox is set to false), and runtime.setUninstallURL() is
+accepted but has no effect.
+Why: extensions that check the browser keep working, and they cannot single out Whisper
+users. An uninstall URL makes the browser open a page of the extension's choosing when
+the extension is removed, which tells its author who removed it and when.
+Adapted from: LibreWolf's vendor-name.patch and extensions-setUninstallURL.patch
+(MPL-2.0).
+---
+diff --git a/toolkit/components/extensions/parent/ext-runtime.js b/toolkit/components/extensions/parent/ext-runtime.js
+index abc30a2e13..589b032494 100644
+--- a/toolkit/components/extensions/parent/ext-runtime.js
++++ b/toolkit/components/extensions/parent/ext-runtime.js
+@@ -334,7 +334,13 @@ this.runtime = class extends ExtensionAPIPersistent {
+ 
+         getBrowserInfo: function () {
+           const { name, vendor, version, appBuildID } = Services.appinfo;
+-          const info = { name, vendor, version, buildID: appBuildID };
++          // Whisper: answer like Firefox, so extensions cannot single out Whisper.
++          const info = Services.prefs.getBoolPref(
++            "whisper.extensions.reportFirefox",
++            true
++          )
++            ? { name: "Firefox", vendor: "Mozilla", version, buildID: appBuildID }
++            : { name, vendor, version, buildID: appBuildID };
+           return Promise.resolve(info);
+         },
+ 
+@@ -354,7 +360,8 @@ this.runtime = class extends ExtensionAPIPersistent {
+         },
+ 
+         setUninstallURL: function (url) {
+-          if (url === null || url.length === 0) {
++          // Whisper: never open a page when an extension is removed.
++          if (true || url === null || url.length === 0) {
+             extension.uninstallURL = null;
+             return Promise.resolve();
+           }

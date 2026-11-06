@@ -1,0 +1,25 @@
+Whisper: the Linux package carries install.sh
+
+What: lists install.sh (browser/components/whisper/linux/) in the package, next to the
+whisper program.
+Why: the Linux tarball installs itself for the current user with it, without root: the
+folder goes to ~/.local/share/whisper, where Whisper updates itself, with a menu entry,
+icons and a whisper command; it also uninstalls, keeping the profile unless asked.
+The package manifest lists every file that goes into a package, so a new one must be
+named here.
+---
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+index 8d0a8e2aaa..14e2f11f2a 100644
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -162,6 +162,10 @@
+ @BINPATH@/@MOZ_APP_NAME@-bin
+ #endif
+ @BINPATH@/@MOZ_APP_NAME@
++#ifdef MOZ_WIDGET_GTK
++; Whisper: installs this copy for the current user (browser/components/whisper/linux/)
++@BINPATH@/install.sh
++#endif
+ #endif
+ @RESPATH@/application.ini
+ #ifdef MOZ_UPDATER

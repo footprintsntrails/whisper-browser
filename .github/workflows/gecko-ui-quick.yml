@@ -1,0 +1,307 @@
+name: gecko-ui-quick
+
+# Development shortcut for Whisper's interface: takes the Linux package of an earlier
+# gecko run, replaces the interface files in it with the ones in this commit
+# (gecko/scripts/repack-ui.py) and runs the smoke test, in minutes instead of a full
+# build. Runs on every push that changes the interface or the smoke test, using the
+# newest gecko run on the branch that has a Linux package.
+#
+# canary: when the smoke test passes on a push and every change since the last green
+# gecko run with a canary build reaches the browser by repacking (repack-ui.py --check),
+# that canary build gets this commit's interface files and a new build ID
+# (set_build_id.py), is signed with the canary key and published to Whisper Canary,
+# then the update host is deployed (pages.yml): an interface change reaches the canary
+# in minutes. Any other change waits for gecko.yml, which publishes after its full build.
+
+on:
+  push:
+    branches: [main, wip/gecko, wip/updates]
+    paths:
+      - gecko/overlay/browser/components/whisper/**
+      - gecko/overlay/browser/branding/whisper/content/aboutDialog.css
+      - gecko/overlay/browser/branding/whisper/content/about.png
+      - gecko/scripts/smoke/**
+      - gecko/scripts/repack-ui.py
+      - gecko/network-allowlist.txt
+      - .github/workflows/gecko-ui-quick.yml
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Id of the gecko run whose Linux package to reuse (empty for the newest)
+        required: false
+        type: string
+
+concurrency:
+  group: gecko-ui-quick-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # To download the package from the earlier run
+  actions: read
+
+jobs:
+  smoke:
+    name: Smoke test with this commit's interface files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Version
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
+      - name: Which gecko run to take the Linux package from
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          run_id=$RUN_ID
+          if [ -z "$run_id" ]; then
+            for id in $(gh run list -R "$GITHUB_REPOSITORY" --workflow gecko.yml --branch "$GITHUB_REF_NAME" \
+                          --limit 30 --json databaseId -q '.[].databaseId'); do
+              if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" -q '.artifacts[] | select(.expired | not) | .name' \
+                   | grep -qx "whisper-$FIREFOX_VERSION-linux-x86_64"; then
+                run_id=$id
+                break
+              fi
+            done
+          fi
+          if [ -z "$run_id" ]; then echo "::error::no gecko run with a Linux package yet"; exit 1; fi
+          echo "Using the Linux package of gecko run $run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: whisper-${{ env.FIREFOX_VERSION }}-linux-x86_64
+          path: dist
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: What the browser needs to run, plus Xvfb and ImageMagick
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends xvfb imagemagick \
+            libgtk-3-0t64 libasound2t64 libx11-xcb1 libdbus-glib-1-2 libxtst6 libpci3
+      - name: Unpack and replace the interface files
+        run: |
+          (cd dist && sha256sum -c SHA256SUMS)
+          mkdir -p "$RUNNER_TEMP/app"
+          tar -xJf dist/whisper-*.linux-x86_64.tar.xz -C "$RUNNER_TEMP/app"
+          python3 gecko/scripts/repack-ui.py "$RUNNER_TEMP/app/whisper"
+      - name: Let the browser's sandbox use user namespaces
+        run: |
+          # Ubuntu 24.04 blocks unprivileged user namespaces through AppArmor; Firefox's
+          # content sandbox needs them (on a desktop the browser's AppArmor profile
+          # allows it). Without this the sandbox runs weakened and content processes die.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Smoke test
+        run: |
+          gecko/scripts/smoke/run-smoke.sh "$RUNNER_TEMP/app/whisper" \
+            gecko/overlay/browser/components/whisper/0-whisper.js "$RUNNER_TEMP/smoke" "$FIREFOX_VERSION"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Smoke test with this commit's interface files"
+            cat "$RUNNER_TEMP/smoke/report.md" 2>/dev/null || echo "no report"
+            echo '```'
+            cat "$RUNNER_TEMP/smoke/first-start-hostnames.txt" 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: smoke-linux-quick
+          path: ${{ runner.temp }}/smoke/
+          if-no-files-found: ignore
+
+  canary:
+    name: Interface update for Whisper Canary
+    needs: smoke
+    # A push, or a run started by hand. (Canary 20261106203109 from this path did not
+    # start: the repack had made omni.ja readable for its owner only. The repack now
+    # keeps every jar as mach package writes it, and the exact tarball is started
+    # before and after publishing; run 42298972783 proved it, including that the check
+    # refuses such an omni.ja.)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: canary
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: canary-publish
+      cancel-in-progress: false
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Version
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
+      - name: The canary build to put this interface into, and whether a repack is enough
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=''
+          sha=''
+          for row in $(gh run list -R "$GITHUB_REPOSITORY" --workflow gecko.yml --branch "$GITHUB_REF_NAME" \
+                         --status success --limit 30 --json databaseId,headSha -q '.[] | "\(.databaseId):\(.headSha)"'); do
+            names=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/${row%%:*}/artifacts" -q '.artifacts[] | select(.expired | not) | .name')
+            if echo "$names" | grep -qx "whisper-canary-$FIREFOX_VERSION-linux-x86_64" &&
+               echo "$names" | grep -qx "whisper-canary-$FIREFOX_VERSION-windows-x86_64"; then
+              run_id=${row%%:*} sha=${row#*:}
+              break
+            fi
+          done
+          if [ -z "$run_id" ]; then
+            echo "::notice::no green gecko run with a canary build on $GITHUB_REF_NAME yet; the full build will publish"
+            echo "repack=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "base: gecko run $run_id, commit $sha"
+          changed=$(git diff --name-only "$sha" "$GITHUB_SHA")
+          echo "$changed"
+          # shellcheck disable=SC2086  # one file name per word
+          if python3 gecko/scripts/repack-ui.py --check $changed; then
+            repack=true
+          else
+            repack=false
+            echo "::notice::these changes need the full build; gecko.yml publishes the canary after it"
+          fi
+          {
+            echo "repack=$repack"
+            echo "run_id=$run_id"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.base.outputs.repack == 'true'
+        with:
+          pattern: "{whisper-canary-${{ env.FIREFOX_VERSION }}-*,whisper-${{ env.FIREFOX_VERSION }}-linux-x86_64,whisper-mar-tools}"
+          path: build
+          run-id: ${{ steps.base.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: NSS's tools, and what the browser needs to run under Xvfb
+        if: steps.base.outputs.repack == 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libnss3-tools xvfb \
+            libgtk-3-0t64 libasound2t64 libx11-xcb1 libdbus-glib-1-2 libxtst6 libpci3
+      - name: This interface in the canary build, with a new build ID; packages and MARs
+        id: repack
+        if: steps.base.outputs.repack == 'true'
+        run: |
+          l="build/whisper-canary-$FIREFOX_VERSION-linux-x86_64"
+          w="build/whisper-canary-$FIREFOX_VERSION-windows-x86_64"
+          (cd "$l" && sha256sum -c SHA256SUMS) && (cd "$w" && sha256sum -c SHA256SUMS)
+          build_id=$(date -u +%Y%m%d%H%M%S)
+          mkdir -p "$RUNNER_TEMP/linux" "$RUNNER_TEMP/windows" "$RUNNER_TEMP/nss"
+          tar -xJf "$(find "$l" -name 'whisper-*.tar.xz')" -C "$RUNNER_TEMP/linux"
+          python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
+            "$(find "$w" -name 'whisper-*.win64.zip')" "$RUNNER_TEMP/windows"
+          for app in "$RUNNER_TEMP/linux/whisper" "$RUNNER_TEMP/windows/whisper"; do
+            python3 gecko/scripts/repack-ui.py "$app"
+            python3 gecko/scripts/update/set_build_id.py "$app" "$build_id"
+          done
+          tar -xJf "$(find "build/whisper-$FIREFOX_VERSION-linux-x86_64" -name 'whisper-*.tar.xz')" -C "$RUNNER_TEMP/nss"
+          export MAR_TOOLS="$PWD/build/whisper-mar-tools" NSS_LIBS="$RUNNER_TEMP/nss/whisper"
+          python3 gecko/scripts/update/canary.py prepare --dist dist \
+            --linux "$RUNNER_TEMP/linux/whisper" --windows "$RUNNER_TEMP/windows/whisper"
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+      # The exact tarball that is about to be published, unpacked and run as an install is
+      # (root-owned files, another user, non-headless under Xvfb).
+      - name: The repacked canary starts
+        if: steps.base.outputs.repack == 'true'
+        env:
+          BUILD_ID: ${{ steps.repack.outputs.build_id }}
+        run: |
+          gecko/scripts/update/start-check-package.sh dist/whisper-canary-linux-x86_64.tar.xz "$BUILD_ID" canary \
+            "$RUNNER_TEMP/start-before"
+      # The check above must fail for the mistake that let a canary out that did not
+      # start: the same files with omni.ja readable for its owner only.
+      - name: The start check catches an unreadable omni.ja
+        if: steps.base.outputs.repack == 'true'
+        env:
+          BUILD_ID: ${{ steps.repack.outputs.build_id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/broken"
+          cp -a "$RUNNER_TEMP/linux/whisper" "$RUNNER_TEMP/broken/"
+          chmod 600 "$RUNNER_TEMP/broken/whisper/omni.ja" "$RUNNER_TEMP/broken/whisper/browser/omni.ja"
+          tar -cJf "$RUNNER_TEMP/broken.tar.xz" -C "$RUNNER_TEMP/broken" whisper
+          if gecko/scripts/update/start-check-package.sh "$RUNNER_TEMP/broken.tar.xz" "$BUILD_ID" canary \
+            "$RUNNER_TEMP/start-broken"; then
+            echo "::error::the start check passed a package whose omni.ja only its owner can read"
+            exit 1
+          fi
+          grep -qi "installation seems to be corrupt" "$RUNNER_TEMP/start-broken/browser.log"
+          echo "the start check refuses it, with Firefox's own message:"
+          grep -i "corrupt" "$RUNNER_TEMP/start-broken/browser.log" | head -n 3
+      - name: MARs signed with the canary key
+        if: steps.base.outputs.repack == 'true'
+        env:
+          MAR_CANARY_KEY: ${{ secrets.MAR_CANARY_KEY }}
+          BASE: ${{ steps.base.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$MAR_CANARY_KEY" ]; then
+            echo "::error::the canary environment has no MAR_CANARY_KEY secret"
+            exit 1
+          fi
+          # signmar runs with the NSS libraries unpacked in the step before
+          export MAR_TOOLS="$PWD/build/whisper-mar-tools" NSS_LIBS="$RUNNER_TEMP/nss/whisper"
+          keydir=$(umask 077 && mktemp -d)
+          trap 'rm -rf "$keydir"' EXIT
+          (umask 077 && printf '%s\n' "$MAR_CANARY_KEY" > "$keydir/key.pem")
+          unset MAR_CANARY_KEY
+          python3 gecko/scripts/update/canary.py sign --key "$keydir/key.pem" \
+            --cert gecko/overlay/toolkit/mozapps/update/updater/whisper_canary.der --dist dist \
+            --commit "$GITHUB_SHA" --engine-commit "$BASE" --kind quick --branch "$GITHUB_REF_NAME" \
+            --run-url "$RUN_URL"
+          (cd dist && sha256sum -c SHA256SUMS)
+      - name: Publish to the rolling pre-release
+        id: publish
+        if: steps.base.outputs.repack == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 gecko/scripts/update/canary.py publish --dist dist --commit "$GITHUB_SHA"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Whisper Canary: interface update published"
+            cat canary-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Before the update host is deployed: the tarball as the release serves it.
+      - name: The published canary starts
+        if: steps.publish.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gecko/scripts/update/check-published-canary.sh dist "$RUNNER_TEMP/start-after"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.base.outputs.repack == 'true'
+        with:
+          name: canary-start-checks
+          path: |
+            ${{ runner.temp }}/start-before/
+            ${{ runner.temp }}/start-broken/
+            ${{ runner.temp }}/start-after/
+          if-no-files-found: ignore
+
+  pages-canary:
+    name: Update host
+    needs: canary
+    if: needs.canary.outputs.published == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

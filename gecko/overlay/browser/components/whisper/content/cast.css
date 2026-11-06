@@ -1,0 +1,193 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Cast, Whisper's look, built into the browser (it was the profile kit's userChrome.css).
+ * Loaded into every browser window before its first layout by WhisperUI.sys.mjs.
+ *
+ * Firefox's own vertical tabs and sidebar do the work; this sheet recolours and
+ * reshapes them, so a Firefox update cannot break the layout: at worst a colour or a
+ * size falls back to Firefox's.
+ *
+ * Render budget (concept, section 5): nothing here animates except transform and
+ * opacity, no backdrop-filter or filter, one rounded clip over the page.
+ */
+
+@font-face { font-family: "Whisper Inter"; src: url("fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Whisper Inter"; src: url("fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Whisper Inter"; src: url("fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; }
+
+:root {
+  /* Palette: black and cool platinum, graphite in between, one pastel for focus */
+  --w-black: #111316;
+  --w-ink: #0b0d0f;
+  --w-panel: #15181b;
+  --w-surface: #1b1f23;
+  --w-raise: #23282d;
+  --w-select: #2b3137;
+  --w-line: #2a2f35;
+  --w-text: #d3d9df;
+  --w-muted: #8e98a3;
+  --w-focus: #a7c7e7;
+  --w-radius: 10px;
+  --w-gap: 8px;
+
+  /* Tab sidebar geometry (see "Tab sidebar" below) */
+  --w-tab-height: 40px;
+  --w-tab-icon: 20px;
+  --w-tab-label: 14px;
+  --w-sidebar-width: 216px;
+  --w-edge: 10px;
+
+  --toolbar-bgcolor: var(--w-black) !important;
+  --toolbar-color: var(--w-text) !important;
+  --toolbox-bgcolor: var(--w-black) !important;
+  --toolbox-bgcolor-inactive: var(--w-black) !important;
+  --toolbox-background-color: var(--w-black) !important;
+  --lwt-accent-color: var(--w-black) !important;
+  --lwt-text-color: var(--w-text) !important;
+  --toolbar-field-background-color: var(--w-surface) !important;
+  --toolbar-field-color: var(--w-text) !important;
+  --toolbar-field-border-color: transparent !important;
+  --toolbar-field-focus-background-color: var(--w-ink) !important;
+  --toolbar-field-focus-color: var(--w-text) !important;
+  --toolbar-field-focus-border-color: var(--w-focus) !important;
+  --tab-selected-bgcolor: var(--w-select) !important;
+  --tab-selected-textcolor: #ffffff !important;
+  --tab-hover-background-color: var(--w-raise) !important;
+  --sidebar-background-color: var(--w-black) !important;
+  --sidebar-text-color: var(--w-text) !important;
+  --sidebar-border-color: transparent !important;
+  --arrowpanel-background: var(--w-surface) !important;
+  --arrowpanel-color: var(--w-text) !important;
+  --arrowpanel-border-color: var(--w-line) !important;
+  --urlbarView-highlight-background: var(--w-select) !important;
+  --urlbarView-highlight-color: #ffffff !important;
+  --button-hover-bgcolor: var(--w-raise) !important;
+  --button-active-bgcolor: var(--w-select) !important;
+  --focus-outline-color: var(--w-focus) !important;
+  --tab-border-radius: 8px !important;
+}
+
+:root, #urlbar, .tabbrowser-tab, menupopup, panel, #sidebar-container {
+  font-family: "Whisper Inter", system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+/* Frame: one black surface behind everything */
+#navigator-toolbox, #nav-bar, #TabsToolbar, #titlebar, #browser, #sidebar-container, #sidebar-box {
+  background: var(--w-black) !important;
+  border-color: transparent !important;
+}
+#navigator-toolbox { border-bottom: none !important; }
+#nav-bar { box-shadow: none !important; }
+
+/* The page in its own panel ("cast"), concept section 5: an 8 px gap shaped like a "Г"
+ * above and to the left of the page, one rounded corner where they meet, and the page
+ * running to the window's right and bottom edges as in Firefox (so the window/viewport
+ * geometry pages can measure stays Firefox's). */
+#tabbrowser-tabbox {
+  margin-block: var(--w-gap) 0 !important;
+  margin-inline-end: 0 !important;
+  border-radius: 0 !important;
+  border-start-start-radius: var(--w-radius) !important;
+  overflow: clip !important;
+  box-shadow: 0 0 0 1px var(--w-line), -2px -2px 14px rgb(0 0 0 / 0.35) !important;
+}
+/* Left arm of the "Г". Not !important: in auto-hide mode Firefox sets this margin itself
+ * while the sidebar slides over the page, and the edge strip is the gap otherwise. */
+:root:not([whisper-sidebar-mode="autohide"]) #tabbrowser-tabbox {
+  margin-inline-start: var(--w-gap);
+}
+:root[sizemode="fullscreen"] #tabbrowser-tabbox,
+:root[inDOMFullscreen] #tabbrowser-tabbox {
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Address bar */
+#urlbar-background {
+  border-radius: 8px !important;
+  background-color: var(--w-surface) !important;
+  border: none !important;
+}
+#urlbar:is([focused], [open]) #urlbar-background { background-color: var(--w-ink) !important; }
+#urlbar[focused] #urlbar-background { box-shadow: 0 0 0 1px var(--w-focus) !important; }
+
+/* Tabs */
+.tabbrowser-tab { color: var(--w-text) !important; }
+.tabbrowser-tab .tab-background { border-radius: 8px !important; }
+.tabbrowser-tab:is([selected], [visuallyselected]) .tab-background {
+  background: var(--w-select) !important;
+  box-shadow: inset 2px 0 0 var(--w-text) !important;
+}
+.tabbrowser-tab:not([selected], [visuallyselected]):hover .tab-background {
+  background: var(--w-raise) !important;
+}
+.tab-label { font-weight: 500 !important; }
+
+/* Pinned tabs as tiles at the top of the sidebar */
+#vertical-pinned-tabs-container .tabbrowser-tab .tab-background {
+  background: var(--w-surface) !important;
+  border-radius: 10px !important;
+}
+
+/* Menus and panels */
+menupopup, panel { --panel-border-radius: 10px !important; }
+
+/* ===== Tab sidebar ===================================================================
+ * Applies to Firefox's vertical tabs. The mode comes from whisper.sidebar.mode, set on
+ * the window as :root[whisper-sidebar-mode] by WhisperSidebar.sys.mjs.
+ *
+ * In every mode the tabs are taller and their icons larger than in Firefox (the strip
+ * was too wide for icons that small), and the expanded sidebar is narrower. A width the
+ * user sets by dragging the sidebar's edge still wins.
+ */
+@media -moz-pref("sidebar.verticalTabs") {
+  :root {
+    --tab-min-height: var(--w-tab-height) !important;
+    --sidebar-expanded-launcher-width: var(--w-sidebar-width) !important;
+    /* Room for the scrollbar beside the tab tiles, as Firefox keeps in normal density;
+     * with compact density Firefox widens it to 11 px, which makes the icon strip wider. */
+    --tab-margin-inline-inner: 9px !important;
+  }
+
+  #tabbrowser-tabs[orient="vertical"] {
+    .tab-icon-image,
+    .tab-icon-pending,
+    .tab-throbber,
+    .tab-sharing-icon-overlay {
+      width: var(--w-tab-icon) !important;
+      height: var(--w-tab-icon) !important;
+    }
+  }
+
+  #tabbrowser-tabs[orient="vertical"][expanded] .tab-label {
+    font-size: var(--w-tab-label) !important;
+  }
+
+  /* Auto-hide: Firefox's "expand on hover" sidebar, with the collapsed sidebar turned
+   * into an invisible strip along the window's left edge. Touching it (the screen edge,
+   * when the window is maximized) slides the sidebar in over the page; it slides out
+   * again when the pointer leaves. While Firefox animates, its own sizes apply. */
+  :root[whisper-sidebar-mode="autohide"][sidebar-expand-on-hover] {
+    #sidebar-container:not([sidebar-launcher-expanded], [sidebar-ongoing-animations]) {
+      width: var(--w-edge) !important;
+      min-width: var(--w-edge) !important;
+      max-width: var(--w-edge) !important;
+
+      > sidebar-main {
+        min-width: 0 !important;
+        visibility: hidden;
+      }
+    }
+
+    #sidebar-container[sidebar-launcher-expanded] {
+      box-shadow: 8px 0 24px rgb(0 0 0 / 0.45);
+    }
+
+    #sidebar-launcher-splitter {
+      display: none !important;
+    }
+  }
+}

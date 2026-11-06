@@ -1,0 +1,372 @@
+name: gecko-build
+
+# Builds Whisper's own browser (Firefox's source + patches/ + gecko/overlay/) for one
+# target on a Linux runner and uploads the packages. Called by gecko.yml; nothing here
+# publishes anything.
+#
+#   linux-x86_64    native build             -> whisper-<version>.en-US.linux-x86_64.tar.xz
+#   windows-x86_64  cross-compiled with      -> whisper-<version>.en-US.win64.zip and
+#                   clang-cl, like Mozilla's    whisper-<version>.en-US.win64.installer.exe
+#                   own Windows builds          (Mozilla's NSIS installer machinery)
+#
+# Toolchains come from Mozilla's taskcluster (mach's --enable-bootstrap) and, for Windows,
+# the Visual Studio files from Microsoft (taskcluster/scripts/misc/get_vs.py). sccache
+# keeps compiler output between runs in the GitHub Actions cache.
+#
+# With variant canary it builds Whisper Canary instead (gecko/variants/canary,
+# prepare.sh): its own branding, update and MAR channel, certificate and profile folder.
+#
+# Artifacts:
+#   whisper-<firefox version>-<target>   the packages and SHA256SUMS
+#   whisper-canary-<version>-<target>    (canary) the same for Whisper Canary
+#   whisper-mar-tools                    (Linux) Mozilla's mar and signmar from this build
+#                                        and make_full_update.sh, to make and sign MARs
+#   whisper-update-test-b-<target>       (with update-test) the same source built again
+#                                        with a newer build ID, for the update test
+#
+# Every package is checked with gecko/scripts/update/check_package.py: the updater is
+# there and trusts exactly Whisper's two MAR certificates (the canary: only its own).
+#
+# The compiler cache: one per target (and branch). Release builds restore the newest,
+# save their own and then delete the older ones, so the repository stays well under
+# GitHub's 10 GB and nothing useful is evicted. Canary builds only restore it: they
+# compile the same code except for a few files (patches/0028), so they share it.
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: linux-x86_64 or windows-x86_64
+        required: true
+        type: string
+      update-test:
+        description: Also build B (same source, newer build ID) for the update test
+        required: false
+        type: boolean
+        default: false
+      variant:
+        description: release (Whisper) or canary (Whisper Canary)
+        required: false
+        type: string
+        default: release
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ inputs.target }}${{ inputs.variant == 'canary' && ', canary' || '' }})
+    permissions:
+      contents: read
+      # To delete the older compiler caches after saving this one
+      actions: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      TARGET: ${{ inputs.target }}
+      VARIANT: ${{ inputs.variant }}
+      # The artifact name: whisper-<version>-<target>, whisper-canary-<version>-<target>
+      ARTIFACT_PREFIX: ${{ inputs.variant == 'canary' && 'whisper-canary' || 'whisper' }}
+      # No usage data from the build tools either
+      DISABLE_TELEMETRY: "1"
+      MOZ_NOSPAM: "1"
+      SCCACHE_CACHE_SIZE: 5G
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Work folder on the large disk
+        run: |
+          df -h
+          if [ -d /mnt ] && [ "$(df --output=avail -BG /mnt | tail -n 1 | tr -dc 0-9)" -ge 50 ]; then
+            work=/mnt/w
+          else
+            # No large second disk: make room on the main one instead.
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+              /usr/local/share/boost /usr/local/.ghcup
+            work=$HOME/w
+          fi
+          sudo mkdir -p "$work"
+          sudo chown "$(id -u):$(id -g)" "$work"
+          {
+            echo "W=$work"
+            echo "MOZBUILD_STATE_PATH=$work/mozbuild"
+            echo "SCCACHE_DIR=$work/sccache"
+          } >> "$GITHUB_ENV"
+          df -h "$work"
+
+      # One build ID for the whole build and packaging, as in Mozilla's CI. Without it the
+      # build system takes the time again near the end, and the packages' application.ini
+      # and platform.ini get a later build ID than the one compiled into the program,
+      # libxul and the updater; update.xml (from application.ini) would then offer a
+      # release to itself over and over.
+      - name: Build ID
+        run: |
+          echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+
+      - name: Build tools
+        run: |
+          packages="python3-venv unzip zip"
+          if [ "$TARGET" = windows-x86_64 ]; then
+            # msiextract for the Windows SDK; 32-bit libc for the Wine that runs midl.exe
+            packages="$packages msitools libc6-i386"
+          fi
+          sudo apt-get update -q
+          # shellcheck disable=SC2086
+          sudo apt-get install -y -q --no-install-recommends $packages
+
+      - name: Rust (the version Mozilla built this Firefox release with)
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          # Named explicitly: this repository's rust-toolchain.toml (for the Whisper
+          # launcher) would otherwise pick another toolchain inside the checkout.
+          rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
+          rustup default "$RUST_VERSION"
+          if [ "$TARGET" = windows-x86_64 ]; then
+            rustup target add --toolchain "$RUST_VERSION" x86_64-pc-windows-msvc
+          fi
+          rustc "+$RUST_VERSION" --version
+          rustup target list --toolchain "$RUST_VERSION" --installed
+
+      - name: Restore the compiler cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.W }}/sccache
+          key: sccache-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: sccache-${{ inputs.target }}-
+
+      - name: Firefox source, checked against Mozilla's signature
+        run: gecko/scripts/fetch-source.sh "$W/dl"
+
+      - name: uBlock Origin, checked against the pinned SHA-256
+        run: gecko/scripts/fetch-ubo.sh "$W/dl"
+
+      - name: Whisper source tree (patches and overlay)
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          case "$VARIANT" in release | canary) ;; *) echo "::error::unknown variant $VARIANT"; exit 1 ;; esac
+          gecko/scripts/prepare.sh "$W/dl/firefox-$FIREFOX_VERSION.source.tar.xz" \
+            "$W/dl/uBlock0@raymondhill.net.xpi" "$W/src" "$TARGET" "$VARIANT"
+          echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
+
+      - name: Restore Visual Studio files
+        if: inputs.target == 'windows-x86_64'
+        id: vs-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.W }}/vs
+          key: vs-${{ hashFiles('gecko/firefox.env') }}
+
+      - name: Visual Studio files from Microsoft
+        if: inputs.target == 'windows-x86_64' && steps.vs-cache.outputs.cache-hit != 'true'
+        run: |
+          cd "$W"
+          start=$(date +%s)
+          "$W/src/mach" --no-interactive python --virtualenv build \
+            "$W/src/taskcluster/scripts/misc/get_vs.py" build/vs/vs2026.yaml "$W/vs" > "$W/get_vs.log" 2>&1 \
+            || { tail -n 50 "$W/get_vs.log"; exit 1; }
+          echo "Visual Studio files: $(du -sh "$W/vs" | cut -f1) in $(( $(date +%s) - start )) s"
+
+      - name: Save Visual Studio files
+        if: inputs.target == 'windows-x86_64' && steps.vs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.W }}/vs
+          key: vs-${{ hashFiles('gecko/firefox.env') }}
+
+      - name: Build
+        id: build
+        timeout-minutes: 300
+        run: |
+          if [ "$TARGET" = windows-x86_64 ]; then export WHISPER_WINSYSROOT="$W/vs"; fi
+          export WHISPER_SOURCE_CHANGESET="$GITHUB_SHA"
+          cd "$W/src"
+          start=$(date +%s)
+          status=0
+          ./mach --no-interactive build > "$W/build.log" 2>&1 || status=$?
+          minutes=$(( ($(date +%s) - start) / 60 ))
+          echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
+          if [ "$status" != 0 ]; then
+            echo "::error::mach build failed after $minutes minutes"
+            grep -nE '(error|Error|ERROR)[: ]' "$W/build.log" | grep -v -E 'warning|-Werror' | head -n 60 || true
+            tail -n 150 "$W/build.log"
+            exit "$status"
+          fi
+          tail -n 25 "$W/build.log"
+          echo "### Build ${TARGET} (${VARIANT}): ${minutes} minutes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Package
+        id: package
+        run: |
+          if [ "$TARGET" = windows-x86_64 ]; then export WHISPER_WINSYSROOT="$W/vs"; fi
+          cd "$W/src"
+          status=0
+          ./mach --no-interactive package > "$W/package.log" 2>&1 || status=$?
+          tail -n 15 "$W/package.log"
+          # Keep whatever was produced, even if a later part of packaging failed, so a
+          # long build is never lost.
+          mkdir -p "$W/out"
+          case "$TARGET" in
+            linux-*) cp obj/dist/whisper-*.tar.xz "$W/out/" 2>/dev/null || true ;;
+            windows-*)
+              cp obj/dist/whisper-*.win64.zip "$W/out/" 2>/dev/null || true
+              # mach package also runs Mozilla's NSIS installer build (setup.exe and the
+              # package as one self-extracting installer), into obj/dist/.
+              find obj/dist -maxdepth 3 -name 'whisper-*.installer.exe' -exec cp {} "$W/out/" \;
+              if [ -z "$(find "$W/out" -name 'whisper-*.installer.exe' -print -quit)" ]; then
+                echo "::warning::no Windows installer was produced; uploading the zip only"
+              fi ;;
+          esac
+          if [ -n "$(find "$W/out" -name 'whisper-*' -print -quit)" ]; then
+            (cd "$W/out" && sha256sum -- whisper-* | tee SHA256SUMS)
+            {
+              echo "| File | Size |"
+              echo "|---|---|"
+              for f in "$W"/out/whisper-*; do echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"; done
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          ls -l "$W/out"
+          if [ "$status" != 0 ]; then
+            echo "::error::mach package failed"
+            tail -n 100 "$W/package.log"
+            exit "$status"
+          fi
+          [ -n "$(find "$W/out" -name 'whisper-*' -print -quit)" ]
+
+      - name: Compiler cache statistics
+        if: always()
+        run: |
+          # The program, not mozbuild's index file of the same name
+          sccache=$(find "$MOZBUILD_STATE_PATH" -maxdepth 3 -type f -name sccache -perm -u+x ! -path '*/indices/*' \
+            2> /dev/null | head -n 1)
+          if [ -n "$sccache" ]; then "$sccache" --show-stats || true; "$sccache" --stop-server || true; fi
+          du -sh "$SCCACHE_DIR" || true
+
+      - name: Save the compiler cache
+        id: save-cache
+        if: always() && steps.build.outcome != 'skipped' && inputs.variant == 'release'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.W }}/sccache
+          key: sccache-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # Only after a good build: a failed one may have saved a cache with less in it.
+      - name: Keep one compiler cache per target
+        if: always() && steps.save-cache.outcome == 'success' && steps.build.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: sccache-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          PREFIX: sccache-${{ inputs.target }}-
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?ref=$GITHUB_REF&key=$PREFIX&per_page=100" \
+            -q '.actions_caches[] | select(.key != env.KEY) | "\(.id) \(.key)"' |
+            while read -r id key; do
+              echo "deleting the older compiler cache $key"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" || echo "::warning::could not delete $key"
+            done
+
+      # Uploaded whenever the build itself succeeded, so a failure in a later step
+      # never loses the packages.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.build.outcome == 'success'
+        with:
+          name: ${{ env.ARTIFACT_PREFIX }}-${{ env.FIREFOX_VERSION }}-${{ inputs.target }}
+          path: ${{ env.W }}/out/
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: The package updates itself, from Whisper only
+        run: |
+          for f in "$W"/out/whisper-*.tar.xz "$W"/out/whisper-*.zip; do
+            [ -e "$f" ] || continue
+            python3 gecko/scripts/update/check_package.py --variant "$VARIANT" "$f"
+          done
+
+      # The steps below also run if the check above failed, so a long build still
+      # leaves everything needed to look into it.
+      - name: Mozilla's MAR tools from this build
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && inputs.target == 'linux-x86_64' && inputs.variant == 'release' }}
+        run: |
+          mkdir -p "$W/mar-tools"
+          cp "$W/src/obj/dist/host/bin/mar" "$W/src/obj/dist/bin/signmar" \
+            "$W/src/tools/update-packaging/make_full_update.sh" "$W/src/tools/update-packaging/common.sh" \
+            "$W/mar-tools/"
+          "$W/mar-tools/mar" --version
+          ls -l "$W/mar-tools"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && inputs.target == 'linux-x86_64' && inputs.variant == 'release' }}
+        with:
+          name: whisper-mar-tools
+          path: ${{ env.W }}/mar-tools/
+          if-no-files-found: error
+
+      # B: the same source built again a few minutes later, so it has a newer build ID
+      # (compiled into the program and libxul), as the next release would. The update
+      # test installs this build's package (A) and updates it to B.
+      - name: Build B for the update test (same source, newer build ID)
+        id: build-b
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && inputs.update-test && inputs.variant == 'release' }}
+        run: |
+          if [ "$TARGET" = windows-x86_64 ]; then export WHISPER_WINSYSROOT="$W/vs"; fi
+          export WHISPER_SOURCE_CHANGESET="$GITHUB_SHA"
+          cd "$W/src"
+          a=$(sed -n 's/^BuildID=//p' obj/dist/bin/application.ini)
+          b=$(date -u +%Y%m%d%H%M%S)
+          echo "A: build $a, B: build $b"
+          if [ "$b" -le "$a" ]; then echo "::error::B's build ID $b is not newer than A's $a"; exit 1; fi
+          # Recompiled from the cache, but it makes libxul link again and take B's build ID.
+          touch toolkit/xre/nsAppRunner.cpp
+          start=$(date +%s)
+          status=0
+          export MOZ_BUILD_DATE=$b
+          ./mach --no-interactive build > "$W/build-b.log" 2>&1 || status=$?
+          if [ "$status" = 0 ]; then
+            ./mach --no-interactive package > "$W/package-b.log" 2>&1 || status=$?
+          fi
+          tail -n 15 "$W/build-b.log" "$W/package-b.log" 2>/dev/null || true
+          if [ "$status" != 0 ]; then
+            echo "::error::building B failed"
+            tail -n 100 "$W/build-b.log"
+            exit "$status"
+          fi
+          mkdir -p "$W/out-b"
+          case "$TARGET" in
+            linux-*) cp obj/dist/whisper-*.tar.xz "$W/out-b/" ;;
+            windows-*) cp obj/dist/whisper-*.win64.zip "$W/out-b/" ;;
+          esac
+          (cd "$W/out-b" && sha256sum -- whisper-* | tee SHA256SUMS)
+          echo "### Build B (${TARGET}, build $b): $(( ($(date +%s) - start) / 60 )) minutes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: B updates itself too
+        if: ${{ !cancelled() && steps.build-b.outcome == 'success' }}
+        run: |
+          for f in "$W"/out-b/whisper-*; do
+            case "$f" in *.tar.xz|*.zip) python3 gecko/scripts/update/check_package.py "$f" ;; esac
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.build-b.outcome == 'success' }}
+        with:
+          name: whisper-update-test-b-${{ inputs.target }}
+          path: ${{ env.W }}/out-b/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Collect logs
+        if: failure()
+        run: |
+          mkdir -p "$W/logs"
+          cp "$W"/*.log "$W/logs/" 2>/dev/null || true
+          cp "$W/src/obj/config.log" "$W/logs/" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: build-logs-${{ inputs.variant }}-${{ inputs.target }}
+          path: ${{ env.W }}/logs/
+          if-no-files-found: ignore

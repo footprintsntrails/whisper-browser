@@ -1,0 +1,57 @@
+[package]
+name = "whisper"
+description = "Starts Firefox with the Whisper profile, keeps Whisper up to date and imports from other browsers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "whisper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "whisper"
+path = "src/main.rs"
+
+[features]
+# Lets the integration tests point Whisper at a local server and a test key.
+# Never enabled for release builds.
+test-hooks = []
+
+[dependencies]
+flate2 = "1"
+ring = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tar = { version = "0.4", default-features = false }
+ureq = { version = "3.5", default-features = false, features = ["rustls"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Console",
+  "Win32_System_Registry",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+embed-resource = "3"
+
+[dev-dependencies]
+rand = "0.8"
+rsa = "0.9"
+sha2 = { version = "0.10", features = ["oid"] }
+tempfile = "3"
+
+[lints]
+workspace = true
+
+[[test]]
+name = "launch"
+required-features = ["test-hooks"]

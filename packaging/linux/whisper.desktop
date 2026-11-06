@@ -1,0 +1,27 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Whisper
+GenericName=Web Browser
+Comment=A quiet browser built on Firefox. It just won't snitch.
+Exec=whisper %u
+Icon=whisper
+Terminal=false
+StartupNotify=true
+StartupWMClass=Whisper
+Categories=Network;WebBrowser;
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Keywords=browser;internet;web;privacy;firefox;
+Actions=new-window;new-private-window;import;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=whisper --new-window
+
+[Desktop Action new-private-window]
+Name=New Private Window
+Exec=whisper --private-window
+
+[Desktop Action import]
+Name=Import from another browser
+Exec=whisper --import

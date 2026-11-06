@@ -1,0 +1,376 @@
+name: gecko
+
+# Whisper's own browser: Firefox built from Mozilla's signed source release with
+# Whisper's patches, branding, default prefs, Cast interface and uBlock Origin.
+#
+#   linux / windows   build and package (gecko-build.yml)
+#   smoke-linux       start the Linux build under Xvfb with a fresh profile and check it,
+#                     inside a network namespace that records every host name it looks up
+#   smoke-windows     start the Windows build on Windows and check where it keeps its profile
+#   canary-*          Whisper Canary, the same source as the test edition (variant canary:
+#                     own branding, channel, certificate and profile folder; not on tags)
+#   update-*          the end-to-end update test (gecko-update-test.yml): each build
+#                     updates itself to B, the same source built again with a newer build
+#                     ID, and refuses every update it must refuse; the canary updates to
+#                     its next build, and Whisper and the canary refuse each other's MARs
+#   publish-canary    when everything above is green on a branch (push or by hand): the canary
+#                     packages and MARs, signed with the canary key, go to the rolling
+#                     pre-release `canary`, then pages.yml puts its update.xml on the
+#                     update host (next to the release's). Skipped when the interface-
+#                     only path (gecko-ui-quick.yml) already published this commit.
+#
+# Artifacts: whisper-<version>-linux-x86_64 (tar.xz), whisper-<version>-windows-x86_64
+# (zip and installer .exe), whisper-canary-<version>-<target> (the same for the canary),
+# whisper-mar-tools, whisper-update-test-b-<target>, smoke-linux and smoke-windows
+# (reports and screenshots), update-test-linux and update-test-windows.
+#
+# release.yml runs this workflow too, as the gate before anything is signed.
+
+on:
+  push:
+    branches: [main, wip/gecko, wip/updates]
+    paths:
+      - gecko/**
+      - patches/**
+      - profile/chrome/fonts/**
+      - assets/icon/**
+      - assets/installer/**
+      - .github/workflows/gecko.yml
+      - .github/workflows/gecko-build.yml
+      # The update test alone runs from gecko-update-test.yml with an earlier build.
+      - "!gecko/scripts/update/**"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A new push waits for the running build instead of cancelling hours of work; only the
+# newest waiting run is kept.
+concurrency:
+  group: gecko-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    name: Linux x86_64
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/gecko-build.yml
+    with:
+      target: linux-x86_64
+      update-test: true
+
+  windows:
+    name: Windows x86_64
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/gecko-build.yml
+    with:
+      target: windows-x86_64
+      update-test: true
+
+  canary-linux:
+    name: Canary Linux x86_64
+    if: github.ref_type == 'branch'
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/gecko-build.yml
+    with:
+      target: linux-x86_64
+      variant: canary
+
+  canary-windows:
+    name: Canary Windows x86_64
+    if: github.ref_type == 'branch'
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/gecko-build.yml
+    with:
+      target: windows-x86_64
+      variant: canary
+
+  update-linux:
+    name: Update (Linux)
+    # With the canary when it was built (not on tags)
+    needs: [linux, canary-linux]
+    if: ${{ !cancelled() && needs.linux.result == 'success' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/gecko-update-test.yml
+    with:
+      platform: linux
+
+  update-windows:
+    name: Update (Windows)
+    # The Windows MARs are made and signed with the Linux build's MAR tools.
+    needs: [linux, windows, canary-windows]
+    if: ${{ !cancelled() && needs.linux.result == 'success' && needs.windows.result == 'success' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/gecko-update-test.yml
+    with:
+      platform: windows
+
+  smoke-linux:
+    name: Smoke test (Linux)
+    needs: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Version
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: whisper-${{ env.FIREFOX_VERSION }}-linux-x86_64
+          path: dist
+      - name: What the browser needs to run, plus Xvfb and ImageMagick for screenshots
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends xvfb imagemagick \
+            libgtk-3-0t64 libasound2t64 libx11-xcb1 libdbus-glib-1-2 libxtst6 libpci3
+      - name: Unpack
+        run: |
+          (cd dist && sha256sum -c SHA256SUMS)
+          mkdir -p "$RUNNER_TEMP/app"
+          tar -xJf dist/whisper-*.linux-x86_64.tar.xz -C "$RUNNER_TEMP/app"
+          find "$RUNNER_TEMP/app/whisper" -maxdepth 1 | sort | head -n 40
+          find "$RUNNER_TEMP/app/whisper/distribution/extensions" -type f
+      - name: Let the browser's sandbox use user namespaces
+        run: |
+          # Ubuntu 24.04 blocks unprivileged user namespaces through AppArmor; Firefox's
+          # content sandbox needs them (on a desktop the browser's AppArmor profile
+          # allows it). Without this the sandbox runs weakened and content processes die.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Smoke test
+        run: |
+          gecko/scripts/smoke/run-smoke.sh "$RUNNER_TEMP/app/whisper" \
+            gecko/overlay/browser/components/whisper/0-whisper.js "$RUNNER_TEMP/smoke" "$FIREFOX_VERSION"
+      - name: Import test (Firefox, Zen and the rest of the family)
+        if: ${{ !cancelled() }}
+        run: |
+          xvfb-run -a -s "-screen 0 1440x900x24" \
+            python3 gecko/scripts/smoke/import_test.py --app "$RUNNER_TEMP/app/whisper" --out "$RUNNER_TEMP/smoke/import"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Smoke test (Linux)"
+            cat "$RUNNER_TEMP/smoke/report.md" 2>/dev/null || echo "no report"
+            echo "### Import test"
+            cat "$RUNNER_TEMP/smoke/import/report.md" 2>/dev/null || echo "no report"
+            echo
+            echo "### Host names looked up on the first start (DNS, nothing was contacted)"
+            echo '```'
+            cat "$RUNNER_TEMP/smoke/first-start-hostnames.txt" 2>/dev/null || true
+            echo '```'
+            echo "### Host names in the browser's resolver log (includes DNS over HTTPS)"
+            echo '```'
+            cat "$RUNNER_TEMP/smoke/resolver-hostnames.txt" 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: smoke-linux
+          path: ${{ runner.temp }}/smoke/
+          if-no-files-found: ignore
+
+  smoke-windows:
+    name: Smoke test (Windows)
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Version
+        shell: bash
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: whisper-${{ env.FIREFOX_VERSION }}-windows-x86_64
+          path: dist
+      - name: Unpack and check the program
+        run: |
+          $zip = Get-ChildItem dist\whisper-*.win64.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath "$env:RUNNER_TEMP\app"
+          $exe = "$env:RUNNER_TEMP\app\whisper\whisper.exe"
+          if (-not (Test-Path $exe)) { throw "whisper.exe missing" }
+          $info = (Get-Item $exe).VersionInfo
+          "whisper.exe: product '$($info.ProductName)' version '$($info.ProductVersion)' company '$($info.CompanyName)'"
+          if ($info.ProductName -ne 'Whisper') { throw "ProductName is '$($info.ProductName)'" }
+          # No Mozilla names in the file details of the programs and libraries (patch 0009)
+          foreach ($f in 'whisper.exe', 'xul.dll', 'plugin-container.exe', 'private_browsing.exe') {
+            $v = (Get-Item "$env:RUNNER_TEMP\app\whisper\$f").VersionInfo
+            "$f : company '$($v.CompanyName)' copyright '$($v.LegalCopyright)' trademarks '$($v.LegalTrademarks)'"
+            if ("$($v.CompanyName) $($v.LegalCopyright) $($v.LegalTrademarks)" -match 'Mozilla|Firefox') { throw "$f names Mozilla or Firefox in its file details" }
+          }
+          if (-not (Test-Path "$env:RUNNER_TEMP\app\whisper\distribution\extensions\uBlock0@raymondhill.net.xpi")) { throw 'uBlock Origin missing' }
+          Get-ChildItem dist | Format-Table Name, Length
+      - name: Start headless with a fresh user profile folder
+        run: |
+          $exe = "$env:RUNNER_TEMP\app\whisper\whisper.exe"
+          $shot = "$env:RUNNER_TEMP\smoke\headless-license.png"
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\smoke" | Out-Null
+          $before = Test-Path "$env:APPDATA\Mozilla\Firefox"
+          # --wait-for-browser: the launcher process waits for the browser it starts
+          $p = Start-Process -FilePath $exe -ArgumentList '--wait-for-browser', '--headless', '--screenshot', $shot, 'about:license' -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw 'whisper.exe did not exit within 2 minutes' }
+          "exit code $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "whisper.exe exited with $($p.ExitCode)" }
+          if (-not (Test-Path $shot)) { throw 'no screenshot' }
+          $ini = Get-ChildItem -Recurse -Filter profiles.ini "$env:APPDATA\Whisper" -ErrorAction SilentlyContinue
+          if (-not $ini) { throw "no profiles.ini under $env:APPDATA\Whisper" }
+          "profiles: $($ini.FullName -join ', ')"
+          if (-not $before -and (Test-Path "$env:APPDATA\Mozilla\Firefox")) { throw 'Whisper created a Firefox profile folder' }
+          Get-ChildItem -Recurse "$env:APPDATA\Whisper" -Depth 2 | Select-Object -First 30 FullName
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: smoke-windows
+          path: ${{ runner.temp }}/smoke/
+          if-no-files-found: ignore
+
+  publish-canary:
+    name: Publish Whisper Canary
+    needs: [linux, windows, canary-linux, canary-windows, update-linux, update-windows, smoke-linux, smoke-windows]
+    # A push to a branch, or a run started by hand on one; never on a tag (release.yml)
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: canary
+    permissions:
+      contents: write
+    concurrency:
+      group: canary-publish
+      cancel-in-progress: false
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Version
+        run: |
+          # shellcheck source=gecko/firefox.env
+          . gecko/firefox.env
+          echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
+      - name: Did the interface-only path already publish this commit?
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 gecko/scripts/update/canary.py state | tee "$RUNNER_TEMP/published.json"
+          commit=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("commit", ""))' "$RUNNER_TEMP/published.json")
+          if [ "$commit" = "$GITHUB_SHA" ]; then
+            echo "::notice::Whisper Canary already has commit $GITHUB_SHA (published by the interface-only path)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.state.outputs.skip != 'true'
+        with:
+          pattern: "{whisper-canary-${{ env.FIREFOX_VERSION }}-*,whisper-${{ env.FIREFOX_VERSION }}-linux-x86_64,whisper-mar-tools}"
+          path: build
+      - name: NSS's tools, and what the browser needs to run under Xvfb
+        if: steps.state.outputs.skip != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libnss3-tools xvfb \
+            libgtk-3-0t64 libasound2t64 libx11-xcb1 libdbus-glib-1-2 libxtst6 libpci3
+      - name: Canary packages, MARs signed with the canary key, update.xml
+        if: steps.state.outputs.skip != 'true'
+        env:
+          MAR_CANARY_KEY: ${{ secrets.MAR_CANARY_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$MAR_CANARY_KEY" ]; then
+            echo "::error::the canary environment has no MAR_CANARY_KEY secret"
+            exit 1
+          fi
+          l="build/whisper-canary-$FIREFOX_VERSION-linux-x86_64"
+          w="build/whisper-canary-$FIREFOX_VERSION-windows-x86_64"
+          (cd "$l" && sha256sum -c SHA256SUMS) && (cd "$w" && sha256sum -c SHA256SUMS)
+          mkdir -p "$RUNNER_TEMP/nss"
+          tar -xJf "$(find "build/whisper-$FIREFOX_VERSION-linux-x86_64" -name 'whisper-*.tar.xz')" -C "$RUNNER_TEMP/nss"
+          export MAR_TOOLS="$PWD/build/whisper-mar-tools" NSS_LIBS="$RUNNER_TEMP/nss/whisper"
+          python3 gecko/scripts/update/canary.py prepare --dist dist \
+            --linux "$(find "$l" -name 'whisper-*.tar.xz')" --windows "$(find "$w" -name 'whisper-*.win64.zip')" \
+            --installer "$(find "$w" -name 'whisper-*.installer.exe')"
+          keydir=$(umask 077 && mktemp -d)
+          trap 'rm -rf "$keydir"' EXIT
+          (umask 077 && printf '%s\n' "$MAR_CANARY_KEY" > "$keydir/key.pem")
+          unset MAR_CANARY_KEY
+          python3 gecko/scripts/update/canary.py sign --key "$keydir/key.pem" \
+            --cert gecko/overlay/toolkit/mozapps/update/updater/whisper_canary.der --dist dist \
+            --commit "$GITHUB_SHA" --engine-commit "$GITHUB_SHA" --kind full --branch "$GITHUB_REF_NAME" \
+            --run-url "$RUN_URL"
+          (cd dist && sha256sum -c SHA256SUMS)
+      # The exact tarball that is about to be published, unpacked and run as an install is
+      # (root-owned files, another user, non-headless under Xvfb).
+      - name: The canary package starts
+        if: steps.state.outputs.skip != 'true'
+        run: |
+          build_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["builds"]["linux-x86_64"]["build_id"])' dist/canary.json)
+          gecko/scripts/update/start-check-package.sh dist/whisper-canary-linux-x86_64.tar.xz "$build_id" canary \
+            "$RUNNER_TEMP/start-before"
+      - name: Publish to the rolling pre-release
+        id: publish
+        if: steps.state.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 gecko/scripts/update/canary.py publish --dist dist --commit "$GITHUB_SHA"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Whisper Canary published"
+            cat canary-notes.md
+            echo '```'
+            ls -l dist
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Before the update host is deployed: the tarball as the release serves it.
+      - name: The published canary starts
+        if: steps.publish.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gecko/scripts/update/check-published-canary.sh dist "$RUNNER_TEMP/start-after"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.state.outputs.skip != 'true'
+        with:
+          name: canary-start-checks
+          path: |
+            ${{ runner.temp }}/start-before/
+            ${{ runner.temp }}/start-after/
+          if-no-files-found: ignore
+
+  pages-canary:
+    name: Update host
+    needs: publish-canary
+    if: needs.publish-canary.outputs.published == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

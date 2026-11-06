@@ -1,0 +1,90 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: lint
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Secrets, personal data and local paths
+        run: cargo xtask scan
+      - name: actionlint (with shellcheck for every run step)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          shellcheck --version | head -n 2
+          "$RUNNER_TEMP/actionlint" -color
+      - name: Update scripts (shellcheck, Python syntax)
+        run: |
+          shellcheck -x gecko/scripts/update/*.sh
+          python3 -m py_compile gecko/scripts/*.py gecko/scripts/*/*.py
+      - name: Every script that is run directly is executable
+        run: python3 .github/check-scripts.py
+      - name: Desktop entry
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q desktop-file-utils
+          desktop-file-validate packaging/linux/whisper.desktop
+
+  deny:
+    name: Advisories and licenses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          arguments: --all-features
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: test
+      - name: clippy for this system
+        run: cargo clippy -p whisper --all-targets --features test-hooks --locked -- -D warnings
+      - name: Unit and end-to-end tests
+        run: cargo test --workspace --features whisper/test-hooks --locked
+

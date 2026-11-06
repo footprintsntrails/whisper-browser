@@ -1,0 +1,28 @@
+Whisper: the Rust build configuration leaves out the update channel unless the crash reporter is built
+
+What: the generated Rust build configuration (mozbuild crate, buildconfig.rs) carries
+MOZ_UPDATE_CHANNEL only when the crash reporter is built; the crash reporter's
+crash_helper_common is the only Rust code that reads it.
+Why: almost all of Gecko's Rust code depends on the mozbuild crate, so a different
+update channel made every crate compile anew. Whisper builds no crash reporter, and
+Whisper Canary differs from Whisper in its update channel; without the channel in
+this file both editions compile the same Rust code and share one compiler cache, so a
+canary build takes as long as a release build from a warm cache.
+---
+diff --git a/build/rust/mozbuild/generate_buildconfig.py b/build/rust/mozbuild/generate_buildconfig.py
+--- a/build/rust/mozbuild/generate_buildconfig.py
++++ b/build/rust/mozbuild/generate_buildconfig.py
+@@ -156,7 +156,12 @@
+     # Used by toolkit/crashreporter/crash_helper_common
+     output.write(generate_string("MOZ_APP_ID"))
+     output.write(generate_string("MOZ_CRASHREPORTER_URL"))
+-    output.write(generate_string("MOZ_UPDATE_CHANNEL"))
++    # Whisper: only the crash reporter's Rust code reads the update channel, and Whisper
++    # builds no crash reporter. Without it here, every crate that depends on this one
++    # (most of Gecko's Rust code) compiles the same for Whisper and Whisper Canary, so
++    # both share one compiler cache.
++    if buildconfig.substs.get("MOZ_CRASHREPORTER"):
++        output.write(generate_string("MOZ_UPDATE_CHANNEL"))
+ 
+     # NSS shared libraries the megazord and rusttests link against. The list lives
+     # in mozbuild.nss_libs so that the libsForTests packaging action can use the

@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea for Whisper
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: The problem or wish behind the idea.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How could Whisper help? Sketches and examples from other browsers are welcome.
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy
+      description: Would this make the browser contact a new server or store something new? If so, how could it be avoided?

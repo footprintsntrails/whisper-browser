@@ -1,0 +1,56 @@
+# Whisper build configuration shared by every platform. gecko/scripts/prepare.sh writes
+# this file followed by the platform file (linux-x86_64, windows-x86_64) to
+# <source>/mozconfig. Options follow Mozilla's own release mozconfigs except where a
+# comment says why not.
+
+ac_add_options --enable-application=browser
+ac_add_options --with-app-name=whisper
+ac_add_options --with-app-basename=Whisper
+ac_add_options --with-branding=browser/branding/whisper
+
+# A release build like Firefox's (MOZILLA_OFFICIAL also keeps Firefox's build-time
+# behaviour, see patches/0007-drm-without-mozilla-signatures.patch).
+export MOZILLA_OFFICIAL=1
+ac_add_options --enable-update-channel=release
+ac_add_options --enable-release
+ac_add_options --enable-optimize
+ac_add_options --disable-debug
+ac_add_options --disable-debug-symbols
+ac_add_options --disable-tests
+ac_add_options --disable-geckodriver
+ac_add_options --enable-rust-simd
+
+# Nothing reports home. Official builds turn telemetry reporting on by default; an
+# empty value turns it off. The health report and Normandy are removed by
+# patches/0002-no-data-reporting.patch, so MOZ_DATA_REPORTING ends up off too.
+ac_add_options MOZ_TELEMETRY_REPORTING=
+ac_add_options --disable-crashreporter
+ac_add_options --disable-default-browser-agent
+
+# Firefox's own updater, pointed at Whisper: it checks Whisper's update host
+# (patches/0021-update-url.patch), downloads in the background, stages the update and
+# asks to restart. A MAR is applied only if it is signed with one of Whisper's two
+# certificates (patches/0020-updater-whisper-certificates.patch), carries Whisper's
+# MAR channel and is not older than the running build (patches/0022-...). Signature
+# checks stay on: never --enable-unverified-updates. The MAR channel IDs come from
+# gecko/release.env; prepare.sh adds them below this file.
+
+# Connections never bypass a proxy configured in the browser.
+ac_add_options --enable-proxy-bypass-protection
+ac_add_options --disable-proxy-direct-failover
+
+# Toolchains (clang, cbindgen, node, nasm, sysroots, ...) come from Mozilla's
+# taskcluster, as for Mozilla's own builds; sccache caches compiler output (C, C++ and
+# Rust) between CI runs.
+ac_add_options --enable-bootstrap
+ac_add_options --with-ccache=sccache
+
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj
+mk_add_options AUTOCLOBBER=1
+
+# about:buildconfig names the repository and commit this build came from.
+if test -n "$WHISPER_SOURCE_CHANGESET"; then
+  export MOZ_SOURCE_REPO=https://github.com/footprintsntrails/whisper-browser
+  export MOZ_SOURCE_CHANGESET="$WHISPER_SOURCE_CHANGESET"
+  export MOZ_INCLUDE_SOURCE_INFO=1
+fi

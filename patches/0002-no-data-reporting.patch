@@ -1,0 +1,92 @@
+Whisper: no telemetry, health report or Normandy, at build time
+
+What: builds without the health report service and without Normandy (studies), always
+builds Glean with uploads disabled, and makes legacy Telemetry never record. Nimbus
+(experiments) counts as disabled for Firefox Labs too.
+Why: Whisper does not report on its users. The mozconfig already leaves
+MOZ_TELEMETRY_REPORTING unset and the crash reporter out, and 0-whisper.js locks the
+prefs off; this removes the code paths too, so no pref can turn them back on.
+Normandy is what starts Nimbus; without it Nimbus never initializes, and anything
+that waits for it while Nimbus counts as enabled (the new tab page does) waits for
+ever. With Labs off as well, Nimbus is disabled outright and those waits end at once.
+Adapted from: LibreWolf's disable-data-reporting-at-compile-time.patch (MPL-2.0),
+without its edits to the vendored glean-core crate.
+---
+diff --git a/browser/moz.configure b/browser/moz.configure
+index 055df85e58..2695b0d9a8 100644
+--- a/browser/moz.configure
++++ b/browser/moz.configure
+@@ -3,11 +3,11 @@
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+ imply_option("MOZ_PLACES", True)
+-imply_option("MOZ_SERVICES_HEALTHREPORT", True)
++imply_option("MOZ_SERVICES_HEALTHREPORT", False)
+ imply_option("MOZ_SERVICES_SYNC", True)
+ imply_option("MOZ_DEDICATED_PROFILES", True)
+ imply_option("MOZ_BLOCK_PROFILE_DOWNGRADE", True)
+-imply_option("MOZ_NORMANDY", True)
++imply_option("MOZ_NORMANDY", False)
+ imply_option("MOZ_PROFILE_MIGRATOR", True)
+ 
+ 
+diff --git a/toolkit/components/nimbus/ExperimentAPI.sys.mjs b/toolkit/components/nimbus/ExperimentAPI.sys.mjs
+index 282c342ecc..09a4a63769 100644
+--- a/toolkit/components/nimbus/ExperimentAPI.sys.mjs
++++ b/toolkit/components/nimbus/ExperimentAPI.sys.mjs
+@@ -505,7 +505,8 @@ export const ExperimentAPI = new (class {
+   }
+ 
+   get labsEnabled() {
+-    return Services.policies.isAllowed("FirefoxLabs");
++    // Whisper: no Nimbus at all (Normandy, which starts it, is not built).
++    return false && Services.policies.isAllowed("FirefoxLabs");
+   }
+ 
+   get rolloutsEnabled() {
+diff --git a/toolkit/components/telemetry/core/Telemetry.cpp b/toolkit/components/telemetry/core/Telemetry.cpp
+index 9bfd2edf7f..def07e3e97 100644
+--- a/toolkit/components/telemetry/core/Telemetry.cpp
++++ b/toolkit/components/telemetry/core/Telemetry.cpp
+@@ -694,7 +694,7 @@ TelemetryImpl::GetCanRecordBase(bool* ret) {
+ 
+ NS_IMETHODIMP
+ TelemetryImpl::SetCanRecordBase(bool canRecord) {
+-#ifndef FUZZING
++#if 0  // Whisper: Telemetry never records (was: #ifndef FUZZING)
+   if (canRecord != mCanRecordBase) {
+     TelemetryHistogram::SetCanRecordBase(canRecord);
+     TelemetryScalar::SetCanRecordBase(canRecord);
+@@ -720,7 +720,7 @@ TelemetryImpl::GetCanRecordExtended(bool* ret) {
+ 
+ NS_IMETHODIMP
+ TelemetryImpl::SetCanRecordExtended(bool canRecord) {
+-#ifndef FUZZING
++#if 0  // Whisper: Telemetry never records (was: #ifndef FUZZING)
+   if (canRecord != mCanRecordExtended) {
+     TelemetryHistogram::SetCanRecordExtended(canRecord);
+     TelemetryScalar::SetCanRecordExtended(canRecord);
+@@ -763,7 +763,7 @@ already_AddRefed<nsITelemetry> TelemetryImpl::CreateTelemetryInstance() {
+   }
+ 
+   bool useTelemetry = false;
+-#ifndef FUZZING
++#if 0  // Whisper: Telemetry never records (was: #ifndef FUZZING)
+   if (XRE_IsParentProcess() || XRE_IsContentProcess() || XRE_IsGPUProcess() ||
+       XRE_IsRDDProcess() || XRE_IsSocketProcess() || XRE_IsUtilityProcess()) {
+     useTelemetry = true;
+diff --git a/toolkit/library/rust/gkrust-features.mozbuild b/toolkit/library/rust/gkrust-features.mozbuild
+index 44206cc469..072eacc701 100644
+--- a/toolkit/library/rust/gkrust-features.mozbuild
++++ b/toolkit/library/rust/gkrust-features.mozbuild
+@@ -57,8 +57,8 @@ if CONFIG["MOZ_WEBRTC"]:
+ # We need to tell Glean it is being built with Gecko.
+ gkrust_features += ["glean_with_gecko"]
+ 
+-if not CONFIG["MOZILLA_OFFICIAL"]:
+-    gkrust_features += ["glean_disable_upload"]
++# Whisper: Glean never uploads, also in official builds.
++gkrust_features += ["glean_disable_upload"]
+ 
+ if CONFIG["MOZ_ENABLE_DBUS"]:
+     gkrust_features += ["with_dbus"]

@@ -1,0 +1,91 @@
+Whisper: updates are ordered by build ID, and the updater refuses older builds
+
+What: (1) the update service treats an update with the same application version as
+newer only if its build ID is greater (Firefox offers any other build ID, older ones
+too); (2) the updater compares the MAR's product version with
+"<Firefox version>.<build date>.<build time>" of its own build (159.0.1.20261106.093414)
+instead of the Firefox version alone.
+Why: Whisper keeps Firefox's version (159.0.1) as its application version, so the
+User-Agent and add-ons see Firefox, and several Whisper releases can share it.
+Firefox would then offer an older Whisper build from a stale update.xml, and its
+updater would apply any signed MAR of the same Firefox version. With (1) a stale or
+replayed update.xml cannot downgrade Whisper; with (2) the build ID is part of the
+signed product information in the MAR, so even an old, validly signed MAR served
+under a newer build ID is refused (VERSION_DOWNGRADE_ERROR, 23).
+gecko/scripts/update/make-mar.sh writes the product version the same way.
+---
+diff --git a/toolkit/mozapps/update/UpdateService.sys.mjs b/toolkit/mozapps/update/UpdateService.sys.mjs
+index 164381ebc1..d1eeb75f30 100644
+--- a/toolkit/mozapps/update/UpdateService.sys.mjs
++++ b/toolkit/mozapps/update/UpdateService.sys.mjs
+@@ -1957,10 +1957,15 @@ function updateIsAtLeastAsOldAs(update, version, buildID) {
+     return false;
+   }
+   let versionComparison = Services.vc.compare(update.appVersion, version);
+-  return (
+-    versionComparison < 0 ||
+-    (versionComparison == 0 && update.buildID == buildID)
+-  );
++  // Whisper: Whisper's releases keep Firefox's version, so builds of the same
++  // version are ordered by build ID (14 digits, so the string order is the
++  // time order). An update with the same or an older build ID is not newer,
++  // even if a stale update.xml still offers it.
++  let isNewerBuild =
++    /^\d{14}$/.test(update.buildID) &&
++    /^\d{14}$/.test(buildID) &&
++    update.buildID > buildID;
++  return versionComparison < 0 || (versionComparison == 0 && !isNewerBuild);
+ }
+ 
+ /**
+diff --git a/toolkit/mozapps/update/updater/updater.cpp b/toolkit/mozapps/update/updater/updater.cpp
+index 52ec6e3c07..0b9a4a68b1 100644
+--- a/toolkit/mozapps/update/updater/updater.cpp
++++ b/toolkit/mozapps/update/updater/updater.cpp
+@@ -3363,6 +3363,37 @@ static int PopulategMARStrings() {
+ #  endif
+   return rv == OK ? OK : UPDATE_SETTINGS_FILE_CHANNEL;
+ }
++
++// Whisper: Whisper's releases keep Firefox's version (159.0.1, say), so two
++// Whisper MARs can carry the same application version. The product version in
++// a Whisper MAR therefore also holds the build ID: the Firefox version in three
++// parts, then the build date and the build time, "159.0.1.20261106.123456"
++// (two parts, since each part must fit in an int32 for the comparison). The
++// product information is covered by the MAR's signature, and
++// VerifyProductInformation refuses a MAR older than this updater's own build,
++// so an older signed Whisper build cannot be installed over a newer one.
++// gecko/scripts/update/make-mar.sh writes the same string into each MAR.
++#  include "buildid.h"
++#  define WHISPER_STRINGIFY_(x) #x
++#  define WHISPER_STRINGIFY(x) WHISPER_STRINGIFY_(x)
++
++static const char* WhisperUpdateVersion() {
++  static char version[64] = {0};
++  if (!version[0]) {
++    const char* app = MOZ_APP_VERSION;
++    const char* build = WHISPER_STRINGIFY(MOZ_BUILDID);
++    int parts = 1;
++    for (const char* p = app; *p; ++p) {
++      if (*p == '.') {
++        ++parts;
++      }
++    }
++    snprintf(version, sizeof(version), "%s%s%s.%.8s.%s", app,
++             parts < 2 ? ".0" : "", parts < 3 ? ".0" : "", build,
++             strlen(build) > 8 ? build + 8 : "0");
++  }
++  return version;
++}
+ #endif  // MOZ_VERIFY_MAR_SIGNATURE
+ 
+ static int GetUpdateFileName(NS_tchar* fileName, int maxChars) {
+@@ -3391,7 +3422,7 @@ static void UpdateThreadFunc(void* param) {
+       rv = PopulategMARStrings();
+       if (rv == OK) {
+         rv = gArchiveReader.VerifyProductInformation(
+-            gMARStrings.MARChannelID.get(), MOZ_APP_VERSION);
++            gMARStrings.MARChannelID.get(), WhisperUpdateVersion());
+       }
+     }
+ #endif

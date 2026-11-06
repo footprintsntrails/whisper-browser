@@ -1,0 +1,45 @@
+# Host names Whisper may look up on its first start. The smoke test
+# (gecko/scripts/smoke/run-smoke.sh) starts Whisper with a fresh profile in a network
+# namespace whose only DNS server answers "no such name" and writes down every name it
+# is asked for; the test fails if a name is not in this file.
+#
+# Every entry says who asks and why. Adding a name here is a decision, not a fix: it
+# means Whisper will contact that server for every user.
+
+# DNS over HTTPS (network.trr.uri)
+dns.quad9.net
+
+# Remote Settings: certificate revocation (CRLite), blocklists, tracking protection lists
+firefox.settings.services.mozilla.com
+
+# Media plugins, downloaded on first start as in Firefox (concept decision 1, default
+# "as stock" with a switch; a later "lazy CDM" option would fetch Widevine only when a
+# page asks for DRM). The file list and SHA-512 come from the build
+# (toolkit/content/gmp-sources), not from Mozilla's update server.
+ciscobinary.openh264.org
+update.googleapis.com
+edgedl.me.gvt1.com
+www.google.com
+
+# Add-on update checks (allowed for now)
+versioncheck-bg.addons.mozilla.org
+
+# Whisper's own updates (gecko/release.env). The update check asks GitHub Pages for
+# update.xml; only when an update is offered does the browser download its MAR from
+# the GitHub release, which redirects to GitHub's download host. GitHub sees the IP
+# address and the time of each check (every 6 hours while Whisper runs).
+footprintsntrails.github.io
+github.com
+release-assets.githubusercontent.com
+
+# uBlock Origin's own filter list updates (allowed for now; the concept replaces them
+# with a signed snapshot that Whisper serves itself)
+ublockorigin.github.io
+ublockorigin.pages.dev
+cdn.jsdelivr.net
+raw.githubusercontent.com
+publicsuffix.org
+pgl.yoyo.org
+malware-filter.gitlab.io
+malware-filter.pages.dev
+curbengh.github.io

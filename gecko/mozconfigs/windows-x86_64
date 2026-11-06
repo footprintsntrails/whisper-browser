@@ -1,0 +1,19 @@
+
+# --- Windows x86_64, cross-compiled on Linux with clang-cl -------------------------
+ac_add_options --target=x86_64-pc-windows-msvc
+ac_add_options --enable-eme=widevine,wmfcdm
+# Ship the Visual C++ runtime DLLs next to whisper.exe, as Firefox does.
+ac_add_options --with-redist
+# Updates without the rest of Mozilla's Windows update machinery: Whisper installs per
+# user (under %LOCALAPPDATA%), so the updater needs no elevation and no maintenance
+# service; no scheduled background-update task while the browser is closed; and
+# downloads go through the browser itself, not through Windows' BITS service.
+ac_add_options --disable-maintenance-service
+ac_add_options --disable-update-agent
+ac_add_options --disable-bits-download
+
+# The Visual Studio headers and libraries, fetched from Microsoft by
+# taskcluster/scripts/misc/get_vs.py (Mozilla does not publish its copy).
+if test -n "$WHISPER_WINSYSROOT"; then
+  export WINSYSROOT="$WHISPER_WINSYSROOT"
+fi

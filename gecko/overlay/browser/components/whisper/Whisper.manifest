@@ -1,0 +1,8 @@
+# Whisper's interface is started from these categories, which Firefox calls for its own
+# features too (see browser/components/BrowserComponents.manifest).
+category browser-before-ui-startup moz-src:///browser/components/whisper/WhisperUI.sys.mjs WhisperUI.init
+category browser-window-before-initial-xul-layout moz-src:///browser/components/whisper/WhisperUI.sys.mjs WhisperUI.onWindowBeforeLayout
+category browser-window-delayed-startup moz-src:///browser/components/whisper/WhisperUI.sys.mjs WhisperUI.onWindowDelayedStartup
+category browser-window-unload moz-src:///browser/components/whisper/WhisperUI.sys.mjs WhisperUI.onWindowUnload
+# Offers Firefox's import window once, on the first start of a new profile.
+category browser-window-delayed-startup moz-src:///browser/components/whisper/WhisperImport.sys.mjs WhisperImport.onWindowDelayedStartup

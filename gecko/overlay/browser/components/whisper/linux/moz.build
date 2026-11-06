@@ -1,0 +1,14 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# install.sh, next to the whisper program in the Linux package: it installs that copy
+# for the current user (folder, menu entry, icons, command) without root, and removes
+# it again (patches/0027-linux-install-script.patch lists it in the package).
+
+# Next to the executable, not in browser/.
+DIST_SUBDIR = ""
+
+FINAL_TARGET_FILES += [
+    "install.sh",
+]

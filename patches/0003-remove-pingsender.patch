@@ -1,0 +1,76 @@
+Whisper: do not build or ship the pingsender program
+
+What: drops toolkit/components/telemetry/pingsender from the build, from the package
+and from the installer's list of files, and makes Telemetry's attempt to run it fail.
+Why: pingsender only exists to upload Telemetry pings at shutdown; Whisper sends none.
+Adapted from: Tor Browser via LibreWolf's remove-pingsender.patch (MPL-2.0).
+---
+diff --git a/browser/app/macbuild/Contents/MacOS-files.in b/browser/app/macbuild/Contents/MacOS-files.in
+index 2f420f7736..3551c6613d 100644
+--- a/browser/app/macbuild/Contents/MacOS-files.in
++++ b/browser/app/macbuild/Contents/MacOS-files.in
+@@ -17,7 +17,6 @@
+ /crashhelper
+ #endif
+ /nmhproxy
+-/pingsender
+ /pk12util
+ /ssltunnel
+ /xpcshell
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+index 04bd23515e..65faf470c9 100644
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -410,10 +410,6 @@ bin/libfreebl_64int_3.so
+ @BINPATH@/crashhelper@BIN_SUFFIX@
+ #endif
+ 
+-; [ Ping Sender ]
+-;
+-@BINPATH@/pingsender@BIN_SUFFIX@
+-
+ ; [ Native Messaging Host Proxy ]
+ ;
+ #if defined(XP_WIN) || defined(XP_MACOSX)
+diff --git a/browser/installer/windows/nsis/shared.nsh b/browser/installer/windows/nsis/shared.nsh
+index 8cd458bc30..b05ec32050 100755
+--- a/browser/installer/windows/nsis/shared.nsh
++++ b/browser/installer/windows/nsis/shared.nsh
+@@ -1412,7 +1412,6 @@ FunctionEnd
+   Push "default-browser-agent.exe"
+   Push "nmhproxy.exe"
+   Push "notification-helper.exe"
+-  Push "pingsender.exe"
+   Push "updater.exe"
+   Push "mozwer.dll"
+   Push "${FileMainEXE}"
+diff --git a/toolkit/components/telemetry/app/TelemetrySend.sys.mjs b/toolkit/components/telemetry/app/TelemetrySend.sys.mjs
+index 2ebae13763..1036ab8c15 100644
+--- a/toolkit/components/telemetry/app/TelemetrySend.sys.mjs
++++ b/toolkit/components/telemetry/app/TelemetrySend.sys.mjs
+@@ -1677,6 +1677,10 @@ export var TelemetrySendImpl = {
+   },
+ 
+   runPingSender(pings, observer) {
++    // Whisper: the pingsender program is not built and pings are never sent.
++    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
++
++    /* eslint-disable-next-line no-unreachable */
+     if (AppConstants.platform === "android") {
+       throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
+     }
+diff --git a/toolkit/components/telemetry/moz.build b/toolkit/components/telemetry/moz.build
+index c3eb89d261..1eb011b33e 100644
+--- a/toolkit/components/telemetry/moz.build
++++ b/toolkit/components/telemetry/moz.build
+@@ -6,10 +6,6 @@ include("/ipc/chromium/chromium-config.mozbuild")
+ 
+ FINAL_LIBRARY = "xul"
+ 
+-DIRS = [
+-    "pingsender",
+-]
+-
+ DEFINES["MOZ_APP_VERSION"] = '"%s"' % CONFIG["MOZ_APP_VERSION"]
+ 
+ LOCAL_INCLUDES += [

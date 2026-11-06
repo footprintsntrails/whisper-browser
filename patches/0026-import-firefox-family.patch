@@ -1,0 +1,105 @@
+Whisper: import from Firefox, Zen, LibreWolf, Floorp and Waterfox
+
+What: registers Whisper's Firefox-family migrators
+(browser/components/whisper/WhisperImport.sys.mjs) with Firefox's import window, adds
+their names, and adds a Cookies choice to the window, unticked by default.
+Why: Firefox's import window reads Chromium browsers and Safari but no other
+Firefox-family browser; their profiles have Firefox's own format, so Whisper's
+migrators read bookmarks, history, passwords and form history from them with
+Firefox's import helpers. Cookies were only ever imported by a profile refresh; here
+they are offered, but only taken when the user ticks them.
+---
+diff --git a/browser/components/migration/MigrationUtils.sys.mjs b/browser/components/migration/MigrationUtils.sys.mjs
+index 1289865805..db1937e8ca 100644
+--- a/browser/components/migration/MigrationUtils.sys.mjs
++++ b/browser/components/migration/MigrationUtils.sys.mjs
+@@ -133,6 +133,29 @@ const MIGRATOR_MODULES = Object.freeze({
+     platforms: ["macosx", "win"],
+   },
+ 
++  // Whisper: browsers whose profiles have Firefox's format, read by Whisper's own
++  // migrators (browser/components/whisper/WhisperImport.sys.mjs).
++  FirefoxImportMigrator: {
++    moduleURI: "moz-src:///browser/components/whisper/WhisperImport.sys.mjs",
++    platforms: ["linux", "macosx", "win"],
++  },
++  ZenProfileMigrator: {
++    moduleURI: "moz-src:///browser/components/whisper/WhisperImport.sys.mjs",
++    platforms: ["linux", "macosx", "win"],
++  },
++  LibreWolfProfileMigrator: {
++    moduleURI: "moz-src:///browser/components/whisper/WhisperImport.sys.mjs",
++    platforms: ["linux", "macosx", "win"],
++  },
++  FloorpProfileMigrator: {
++    moduleURI: "moz-src:///browser/components/whisper/WhisperImport.sys.mjs",
++    platforms: ["linux", "macosx", "win"],
++  },
++  WaterfoxProfileMigrator: {
++    moduleURI: "moz-src:///browser/components/whisper/WhisperImport.sys.mjs",
++    platforms: ["linux", "macosx", "win"],
++  },
++
+   InternalTestingProfileMigrator: {
+     moduleURI:
+       "moz-src:///browser/components/migration/InternalTestingProfileMigrator.sys.mjs",
+diff --git a/browser/components/migration/content/migration-wizard.mjs b/browser/components/migration/content/migration-wizard.mjs
+index f6ada525e6..d344c8995c 100644
+--- a/browser/components/migration/content/migration-wizard.mjs
++++ b/browser/components/migration/content/migration-wizard.mjs
+@@ -108,6 +108,9 @@ export class MigrationWizard extends HTMLElement {
+                 <label id="payment-methods" class="resource-type-label" data-resource-type="PAYMENT_METHODS">
+                   <input type="checkbox"/><span data-l10n-id="migration-payment-methods-option-label"></span>
+                 </label>
++                <label id="cookies" class="resource-type-label" data-resource-type="COOKIES">
++                  <input type="checkbox"/><span data-l10n-id="migration-cookies-option-label"></span>
++                </label>
+               </fieldset>
+             </details>
+ 
+@@ -548,7 +551,9 @@ export class MigrationWizard extends HTMLElement {
+       );
+       if (resourceLabel) {
+         resourceLabel.hidden = false;
+-        resourceLabel.control.checked = true;
++        // Whisper: cookies come along only if the user ticks them.
++        resourceLabel.control.checked =
++          resourceType != MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.COOKIES;
+ 
+         let labelSpan = resourceLabel.querySelector(
+           "span[default-data-l10n-id]"
+@@ -1287,6 +1292,8 @@ export class MigrationWizard extends HTMLElement {
+         "migration-list-autofill-label",
+       [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PAYMENT_METHODS]:
+         "migration-list-payment-methods-label",
++      [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.COOKIES]:
++        "migration-list-cookies-label",
+     };
+ 
+     if (MigrationWizardConstants.USES_FAVORITES.includes(key)) {
+diff --git a/browser/locales/en-US/browser/migrationWizard.ftl b/browser/locales/en-US/browser/migrationWizard.ftl
+index d27c77501a..f98fd56ce6 100644
+--- a/browser/locales/en-US/browser/migrationWizard.ftl
++++ b/browser/locales/en-US/browser/migrationWizard.ftl
+@@ -44,6 +44,12 @@ migration-wizard-migrator-display-name-opera = Opera
+ migration-wizard-migrator-display-name-opera-gx = Opera GX
+ migration-wizard-migrator-display-name-safari = Safari
+ migration-wizard-migrator-display-name-vivaldi = Vivaldi
++# Whisper: browsers whose profiles have Firefox's format (WhisperImport.sys.mjs).
++migration-wizard-migrator-display-name-firefox = Firefox
++migration-wizard-migrator-display-name-zen = Zen
++migration-wizard-migrator-display-name-librewolf = LibreWolf
++migration-wizard-migrator-display-name-floorp = Floorp
++migration-wizard-migrator-display-name-waterfox = Waterfox
+ 
+ migration-source-name-ie = Internet Explorer
+ migration-source-name-edge = Microsoft Edge
+@@ -193,6 +199,8 @@ migration-list-history-label = history
+ migration-list-extensions-label = extensions
+ migration-list-autofill-label = autofill data
+ migration-list-payment-methods-label = payment methods
++# Whisper: cookies can be picked (unticked) when importing from a Firefox-family browser.
++migration-list-cookies-label = cookies
+ 
+ ##
+ 

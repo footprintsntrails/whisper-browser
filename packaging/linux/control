@@ -1,0 +1,17 @@
+Package: whisper-browser
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: Whisper project <https://github.com/footprintsntrails/whisper-browser/issues>
+Installed-Size: @SIZE@
+Section: web
+Priority: optional
+Recommends: firefox | firefox-esr
+Suggests: zenity | kdialog, libnotify-bin
+Homepage: https://github.com/footprintsntrails/whisper-browser
+Description: quiet browser built on Firefox
+ Whisper starts your installed Firefox with a separate, quiet profile:
+ telemetry and studies off, uBlock Origin from addons.mozilla.org,
+ DNS over HTTPS, Strict tracking protection and a dark theme with tabs
+ on the side. Your normal Firefox profile is not touched.
+ .
+ Whisper can't make you invisible. It just won't snitch.

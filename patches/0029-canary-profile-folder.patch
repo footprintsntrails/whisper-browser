@@ -1,0 +1,31 @@
+Whisper: Whisper Canary has a profile folder of its own
+
+What: builds on the update channel "canary" imply MOZ_APP_PROFILE "Whisper Canary",
+so Whisper Canary keeps its profiles in %APPDATA%\Whisper Canary (Windows) and
+~/.config/whisper canary (Linux) instead of Whisper's Whisper\Whisper and
+~/.config/whisper/whisper.
+Why: the canary is installed next to Whisper and must not open, change or share its
+profiles. MOZ_APP_PROFILE can only be implied by configure (not set in a mozconfig),
+like MOZ_APP_VENDOR in patches/0001-app-identity.patch.
+---
+diff --git a/browser/moz.configure b/browser/moz.configure
+--- a/browser/moz.configure
++++ b/browser/moz.configure
+@@ -20,6 +20,17 @@
+ imply_option("BROWSER_CHROME_URL", "chrome://browser/content/browser.xhtml")
+ 
+ 
++# Whisper: Whisper Canary (update channel "canary") keeps its profile apart from
++# Whisper's: %APPDATA%\Whisper Canary on Windows, ~/.config/whisper canary on Linux.
++@depends(update_channel)
++def whisper_app_profile(channel):
++    if channel == "canary":
++        return "Whisper Canary"
++
++
++imply_option("MOZ_APP_PROFILE", whisper_app_profile, reason="--enable-update-channel")
++
++
+ with only_when(target_has_linux_kernel & compile_environment):
+     option(env="MOZ_NO_PIE_COMPAT", help="Enable non-PIE wrapper")
+ 

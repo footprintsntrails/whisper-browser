@@ -1,0 +1,38 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Whisper's own browser code. Everything here is a new file; the only change to
+# Firefox's files that loads it is one line in browser/components/moz.build
+# (patches/0004-whisper-component.patch).
+#
+#   0-whisper.js            default (and locked) prefs
+#   Whisper.manifest        registers WhisperUI with Firefox's window lifecycle categories
+#   WhisperUI.sys.mjs       entry point: stylesheets, uBlock Origin first run
+#   WhisperAbout.sys.mjs    the about dialog: Whisper's version, based on Firefox's
+#   WhisperImport.sys.mjs   import from Firefox, Zen, LibreWolf, Floorp and Waterfox
+#   WhisperLoginCrypto.sys.mjs  reads their saved passwords (their own key4.db)
+#   WhisperSidebar.sys.mjs  the three tab sidebar modes
+#   content/                the Cast stylesheets and the Inter font
+#   locales/                Whisper's strings
+#   distribution/           uBlock Origin, installed on first start
+#   linux/                  install.sh: installs a Linux package for the current user
+
+DIRS += ["distribution"]
+
+if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+    DIRS += ["linux"]
+
+JAR_MANIFESTS += ["jar.mn"]
+
+JS_PREFERENCE_FILES += ["0-whisper.js"]
+
+EXTRA_COMPONENTS += ["Whisper.manifest"]
+
+MOZ_SRC_FILES += [
+    "WhisperAbout.sys.mjs",
+    "WhisperImport.sys.mjs",
+    "WhisperLoginCrypto.sys.mjs",
+    "WhisperSidebar.sys.mjs",
+    "WhisperUI.sys.mjs",
+]

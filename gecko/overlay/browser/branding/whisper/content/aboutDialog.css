@@ -1,0 +1,42 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Whisper's about dialog: the Firefox dialog in Whisper's colours, without the parts
+ * that speak for Mozilla (the "designed by Mozilla" and donation lines, Mozilla's terms
+ * and privacy links). The licence link and the version stay. */
+
+@media not ((prefers-contrast) and (prefers-color-scheme: light)) {
+  #aboutDialogContainer {
+    background-color: #111316;
+    color: #d3d9df;
+    color-scheme: dark;
+  }
+
+  #bottomBox {
+    background-color: #0b0d0f;
+  }
+
+  .text-link {
+    color: #a7c7e7;
+  }
+}
+
+#rightBox {
+  background-size: auto 40px;
+  margin-inline: 30px;
+  padding-top: 64px;
+}
+
+#bottomBox {
+  padding: 15px 10px;
+}
+
+#communityDesc,
+#communityExperimentalDesc,
+#contributeDesc,
+#contributeDescReferrals,
+#trademark,
+.bottom-link:not([href="about:license"]) {
+  display: none;
+}
