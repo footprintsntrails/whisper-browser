@@ -46,7 +46,7 @@ embed-resource = "3"
 [dev-dependencies]
 rand = "0.8"
 rsa = "0.9"
-sha2 = { version = "0.10", features = ["oid"] }
+sha2 = { version = "0.11", features = ["oid"] }
 tempfile = "3"
 
 [lints]
