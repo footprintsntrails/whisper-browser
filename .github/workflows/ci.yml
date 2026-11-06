@@ -1,0 +1,341 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: lint
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Secrets, personal data and local paths
+        run: cargo xtask scan
+      - name: actionlint (with shellcheck for every run step)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          shellcheck --version | head -n 2
+          "$RUNNER_TEMP/actionlint" -color
+      - name: Desktop entry
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q desktop-file-utils
+          desktop-file-validate packaging/linux/whisper.desktop
+
+  deny:
+    name: Advisories and licenses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          arguments: --all-features
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: test
+      - name: clippy for this system
+        run: cargo clippy -p whisper --all-targets --features test-hooks --locked -- -D warnings
+      - name: Unit and end-to-end tests
+        run: cargo test --workspace --features whisper/test-hooks --locked
+
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+
+  install-linux:
+    name: Install test (Linux ${{ matrix.arch }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            suffix: ""
+            rpm: whisper.rpm
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+            suffix: -arm64
+            rpm: whisper-aarch64.rpm
+    env:
+      DEB: whisper${{ matrix.suffix }}.deb
+      RPM: ${{ matrix.rpm }}
+      TARBALL: whisper-linux${{ matrix.suffix }}.tar.gz
+      HELPERS: ${{ runner.temp }}/helpers
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: install-${{ matrix.arch }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-packages
+          path: dist
+      - name: Test helpers (a fake Firefox and the installed-package test)
+        run: |
+          mkdir -p "$HELPERS/fake"
+          cargo build --locked -p whisper --features test-hooks
+          cp target/debug/whisper "$HELPERS/fake/firefox"
+          exe=$(cargo test --locked -p whisper --test installed --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "installed") | .executable')
+          cp "$exe" "$HELPERS/installed-test"
+      - name: Install the .deb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends desktop-file-utils "./dist/$DEB"
+          dpkg -L whisper-browser
+          file /usr/bin/whisper | grep -q static
+          desktop-file-validate /usr/share/applications/whisper.desktop
+          whisper --version
+      - name: Test the installed .deb and the tarball
+        env:
+          WHISPER_INSTALLED_BIN: /usr/bin/whisper
+          WHISPER_INSTALLED_SHARE: /usr/share/whisper
+          WHISPER_FAKE_FIREFOX: ${{ runner.temp }}/helpers/fake/firefox
+          WHISPER_TARBALL_DIR: ${{ runner.temp }}/tarball/whisper-linux
+        run: |
+          mkdir -p "$RUNNER_TEMP/tarball"
+          tar -xzf "dist/$TARBALL" -C "$RUNNER_TEMP/tarball"
+          "$HELPERS/installed-test" --test-threads=1
+      - name: Remove the .deb
+        run: |
+          sudo apt-get remove -y -q whisper-browser
+          test ! -e /usr/bin/whisper
+          test ! -e /usr/share/whisper
+      - name: Install, test and remove the .rpm on Fedora
+        run: |
+          docker run --rm -v "$PWD/dist:/dist:ro" -v "$HELPERS:/helpers:ro" fedora:latest sh -euc '
+            dnf -y -q --setopt=install_weak_deps=False install "/dist/$1"
+            rpm -qi whisper-browser
+            WHISPER_INSTALLED_BIN=/usr/bin/whisper WHISPER_INSTALLED_SHARE=/usr/share/whisper \
+              WHISPER_FAKE_FIREFOX=/helpers/fake/firefox /helpers/installed-test --test-threads=1
+            dnf -y -q remove whisper-browser
+            test ! -e /usr/bin/whisper
+          ' sh "$RPM"
+
+  install-windows:
+    name: Install test (Windows)
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: install-windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-exe
+          path: dist
+      - name: Test helpers (a fake Firefox and the installed-package test)
+        shell: bash
+        run: |
+          helpers="$RUNNER_TEMP/helpers"
+          mkdir -p "$helpers/fake"
+          cargo build --locked -p whisper --features test-hooks
+          cp target/debug/whisper.exe "$helpers/fake/firefox.exe"
+          exe=$(cargo test --locked -p whisper --test installed --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "installed") | .executable')
+          cp "$exe" "$helpers/installed-test.exe"
+      - name: Install silently
+        run: |
+          $p = Start-Process -FilePath dist\Whisper-Setup.exe -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Whisper-Setup.exe exited with $($p.ExitCode)" }
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Whisper'
+          foreach ($f in 'whisper.exe', 'uninstall.exe', 'LICENSE.txt', 'share\VERSION', 'share\profile\user.js', 'share\profile\chrome\userChrome.css') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "missing $f" }
+          }
+          $version = (Get-Content (Join-Path $dir 'share\VERSION')).Trim()
+          $info = (Get-Item (Join-Path $dir 'whisper.exe')).VersionInfo
+          "whisper.exe: $($info.ProductName) $($info.ProductVersion)"
+          if ($info.ProductVersion -ne $version) { throw "whisper.exe says $($info.ProductVersion), share says $version" }
+          $shell = New-Object -ComObject WScript.Shell
+          $programs = [Environment]::GetFolderPath('Programs')
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          $links = @(
+            @{ Path = (Join-Path $programs 'Whisper\Whisper.lnk'); Args = '' },
+            @{ Path = (Join-Path $programs 'Whisper\Import from another browser.lnk'); Args = '--import' },
+            @{ Path = (Join-Path $desktop 'Whisper.lnk'); Args = '' }
+          )
+          foreach ($l in $links) {
+            if (-not (Test-Path $l.Path)) { throw "missing shortcut $($l.Path)" }
+            $s = $shell.CreateShortcut($l.Path)
+            "$($l.Path) -> $($s.TargetPath) $($s.Arguments) (icon $($s.IconLocation))"
+            if ($s.TargetPath -ne (Join-Path $dir 'whisper.exe') -or $s.Arguments -ne $l.Args) { throw "wrong shortcut $($l.Path)" }
+          }
+          $u = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Whisper'
+          foreach ($name in 'DisplayName', 'DisplayIcon', 'DisplayVersion', 'Publisher', 'UninstallString', 'QuietUninstallString', 'InstallLocation') {
+            "$name = $($u.$name)"
+            if (-not $u.$name) { throw "uninstall entry has no $name" }
+          }
+          if ($u.Publisher -ne 'Whisper' -or $u.DisplayVersion -ne $version) { throw 'wrong uninstall entry' }
+      - name: Test the installed program
+        env:
+          WHISPER_FAKE_FIREFOX: ${{ runner.temp }}\helpers\fake\firefox.exe
+        run: |
+          $env:WHISPER_INSTALLED_BIN = Join-Path $env:LOCALAPPDATA 'Programs\Whisper\whisper.exe'
+          $env:WHISPER_INSTALLED_SHARE = Join-Path $env:LOCALAPPDATA 'Programs\Whisper\share'
+          & "$env:RUNNER_TEMP\helpers\installed-test.exe" --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw "installed-package test failed" }
+      - name: Update in place, then uninstall and keep the profile
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Whisper'
+          $data = Join-Path $env:LOCALAPPDATA 'Whisper\Profile'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          Set-Content (Join-Path $data 'marker.txt') 'keep me'
+          $desktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Whisper.lnk'
+          Remove-Item $desktopLink
+          $p = Start-Process -FilePath dist\Whisper-Setup.exe -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "update exited with $($p.ExitCode)" }
+          if (Test-Path $desktopLink) { throw 'an update must not bring back a desktop shortcut the user deleted' }
+          Start-Process -FilePath (Join-Path $dir 'uninstall.exe') -ArgumentList '/S' -Wait
+          # The uninstaller runs from a temporary copy, so wait for it to finish
+          for ($i = 0; $i -lt 60 -and (Test-Path (Join-Path $dir 'whisper.exe')); $i++) { Start-Sleep 1 }
+          Start-Sleep 2
+          if (Test-Path $dir) { throw "$dir is still there" }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Whisper') { throw 'uninstall entry is still there' }
+          if (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) 'Whisper')) { throw 'Start menu folder is still there' }
+          if (-not (Test-Path (Join-Path $data 'marker.txt'))) { throw 'the profile must be kept without /PURGE' }
+      - name: Uninstall with /PURGE deletes the profile
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Whisper'
+          $p = Start-Process -FilePath dist\Whisper-Setup.exe -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install exited with $($p.ExitCode)" }
+          Start-Process -FilePath (Join-Path $dir 'uninstall.exe') -ArgumentList '/S', '/PURGE' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path (Join-Path $env:LOCALAPPDATA 'Whisper')); $i++) { Start-Sleep 1 }
+          Start-Sleep 2
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'Whisper')) { throw 'the profile must be deleted with /PURGE' }
+          if (Test-Path $dir) { throw "$dir is still there" }
+
+  install-macos:
+    name: Install test (macOS)
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      HELPERS: ${{ runner.temp }}/helpers
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: install-macos
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-dmg
+          path: dist
+      - name: Test helpers (a fake Firefox and the installed-package test)
+        run: |
+          mkdir -p "$HELPERS/fake"
+          cargo build --locked -p whisper --features test-hooks
+          cp target/debug/whisper "$HELPERS/fake/firefox"
+          exe=$(cargo test --locked -p whisper --test installed --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true and .target.name == "installed") | .executable')
+          cp "$exe" "$HELPERS/installed-test"
+      - name: Open the disk image and check the app
+        run: |
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" dist/Whisper.dmg
+          ls -la "$RUNNER_TEMP/dmg"
+          test -L "$RUNNER_TEMP/dmg/Applications"
+          app="$RUNNER_TEMP/dmg/Whisper.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -E '^(Identifier|Signature|Format)'
+          archs=$(lipo -archs "$app/Contents/MacOS/whisper")
+          echo "architectures: $archs"
+          case "$archs" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "::error::not a universal binary"; exit 1 ;; esac
+          plutil -lint "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist"
+          # What Gatekeeper says about an app that is not notarized yet (expected: rejected)
+          spctl --assess --type execute -vv "$app" || true
+          mkdir -p "$RUNNER_TEMP/Applications"
+          ditto "$app" "$RUNNER_TEMP/Applications/Whisper.app"
+          hdiutil detach "$RUNNER_TEMP/dmg"
+      - name: Test the installed app
+        env:
+          WHISPER_INSTALLED_BIN: ${{ runner.temp }}/Applications/Whisper.app/Contents/MacOS/whisper
+          WHISPER_INSTALLED_SHARE: ${{ runner.temp }}/Applications/Whisper.app/Contents/Resources/share
+          WHISPER_FAKE_FIREFOX: ${{ runner.temp }}/helpers/fake/firefox
+        run: '"$HELPERS/installed-test" --test-threads=1'
+
+  release-check:
+    name: Release signing (throwaway key)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: xtask
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+          path: .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{linux-packages,windows-exe,macos-dmg}"
+          path: dist
+          merge-multiple: true
+      - name: update.json, signature and SHA256SUMS
+        run: |
+          cargo xtask manifest
+          cargo xtask signing-selftest
+          cargo xtask checksums
+          (cd dist && sha256sum -c SHA256SUMS)
+          ls -l dist

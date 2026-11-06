@@ -1,0 +1,16 @@
+/* Whisper prototype: colours for Firefox's own pages (new tab, home, blank). */
+
+@-moz-document url("about:home"), url("about:newtab"), url("about:privatebrowsing") {
+  :root, body {
+    --newtab-background-color: #111316 !important;
+    --newtab-background-color-secondary: #1b1f23 !important;
+    --newtab-text-primary-color: #d3d9df !important;
+    background-color: #111316 !important;
+  }
+  /* A quiet page: no Firefox wordmark above the search box */
+  .logo-and-wordmark-wrapper, .logo-and-wordmark { display: none !important; }
+}
+
+@-moz-document url("about:blank") {
+  :root { background-color: #111316 !important; }
+}

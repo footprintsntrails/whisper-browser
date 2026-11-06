@@ -1,0 +1,227 @@
+name: build
+
+# Builds every release file. Called by ci.yml (which then installs and tests the packages)
+# and by release.yml (which then signs and publishes them). Nothing here publishes anything.
+#
+# Artifacts:
+#   bundle          build/share (what every package installs) and dist/ profile bundles + VERSION
+#   bin-<target>    the whisper program for each target
+#   linux-packages  whisper.deb, whisper.rpm, whisper-linux.tar.gz (+ arm64 / aarch64 variants)
+#   windows-exe     Whisper-Setup.exe
+#   macos-dmg       Whisper.dmg (universal: Apple silicon and Intel)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  bundle:
+    name: Bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: xtask
+      - name: Share folder and profile bundles
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          cargo xtask bundle
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle
+          path: |
+            build/share
+            dist
+          if-no-files-found: error
+
+  binaries:
+    name: Binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static musl builds run on every Linux distribution, old or new
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: musl C toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q musl-tools
+      - uses: ./.github/actions/rust
+        with:
+          targets: ${{ matrix.target }}
+          cache-key: ${{ matrix.target }}
+      - name: Build
+        shell: bash
+        run: cargo build --release --locked -p whisper --target "$TARGET"
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p out
+          for f in whisper whisper.exe; do
+            if [ -f "target/$TARGET/release/$f" ]; then cp "target/$TARGET/release/$f" out/; fi
+          done
+          ls -l out
+          if [ "$RUNNER_OS" = Linux ]; then
+            file out/whisper
+            file out/whisper | grep -q 'static'
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-${{ matrix.target }}
+          path: out
+          if-no-files-found: error
+
+  linux-packages:
+    name: Linux packages
+    needs: [bundle, binaries]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: xtask
+      - name: rpmbuild
+        run: sudo apt-get update -q && sudo apt-get install -y -q rpm
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+          path: .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bin-x86_64-unknown-linux-musl
+          path: bin/x86_64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bin-aarch64-unknown-linux-musl
+          path: bin/aarch64
+      - name: .deb, .rpm and tarball for x86-64 and ARM64
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          for arch in x86_64 aarch64; do
+            cargo xtask tarball --bin "bin/$arch/whisper" --arch "$arch"
+            cargo xtask deb --bin "bin/$arch/whisper" --arch "$arch"
+            cargo xtask rpm --bin "bin/$arch/whisper" --arch "$arch"
+          done
+      - name: Show the packages
+        run: |
+          dpkg-deb --info dist/whisper.deb
+          dpkg-deb --contents dist/whisper-arm64.deb | head -n 5
+          rpm -qip dist/whisper.rpm
+          rpm -qlp dist/whisper-aarch64.rpm
+          rpm -qp --recommends dist/whisper.rpm
+          tar -tzvf dist/whisper-linux.tar.gz | head -n 8
+          ls -l dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-packages
+          path: |
+            dist/whisper.deb
+            dist/whisper-arm64.deb
+            dist/whisper.rpm
+            dist/whisper-aarch64.rpm
+            dist/whisper-linux.tar.gz
+            dist/whisper-linux-arm64.tar.gz
+          if-no-files-found: error
+
+  windows-exe:
+    name: Windows installer
+    needs: [bundle, binaries]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: xtask
+      - name: NSIS
+        run: sudo apt-get update -q && sudo apt-get install -y -q nsis && makensis -VERSION
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+          path: .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bin-x86_64-pc-windows-msvc
+          path: bin/windows
+      - name: Whisper-Setup.exe
+        run: |
+          cargo xtask nsis --bin bin/windows/whisper.exe
+          ls -l dist/Whisper-Setup.exe
+          file dist/Whisper-Setup.exe
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-exe
+          path: dist/Whisper-Setup.exe
+          if-no-files-found: error
+
+  macos-dmg:
+    name: macOS disk image
+    needs: [bundle, binaries]
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: xtask
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+          path: .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bin-aarch64-apple-darwin
+          path: bin/aarch64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bin-x86_64-apple-darwin
+          path: bin/x86_64
+      - name: Universal binary
+        run: |
+          lipo -create -output bin/whisper bin/aarch64/whisper bin/x86_64/whisper
+          chmod 755 bin/whisper
+          lipo -info bin/whisper
+      - name: Whisper.dmg
+        run: |
+          cargo xtask dmg --bin bin/whisper
+          ls -l dist/Whisper.dmg
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-dmg
+          path: dist/Whisper.dmg
+          if-no-files-found: error

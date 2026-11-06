@@ -1,0 +1,43 @@
+# cargo-deny: advisories, licenses and sources for everything Whisper ships and builds with.
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+# Dev-dependencies only run in tests and are never shipped. (The RSA crate used there to
+# make throwaway test keys has an advisory about timing side channels when signing,
+# RUSTSEC-2023-0071, which does not apply to tests. Whisper itself verifies signatures with ring.)
+exclude-dev = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.93
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -1,0 +1,167 @@
+name: release
+
+# A pushed tag like v0.1.0 builds everything, signs update.json and publishes a GitHub
+# release; installed copies of Whisper pick it up on their next daily check.
+#
+# Run by hand ("Run workflow") it is a dry run by default: everything is built and checked,
+# update.json is signed with a throwaway key, the files are kept as a workflow artifact
+# named "release", and nothing is published.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Dry run (build and check, sign with a throwaway key, publish nothing)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  check:
+    name: Version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          publish=false
+          if [ "$REF_TYPE" = tag ] && { [ "$EVENT" = push ] || [ "$DRY_RUN" = false ]; }; then
+            publish=true
+            if [ "$REF_NAME" != "v$version" ]; then
+              echo "::error::tag $REF_NAME does not match version $version in Cargo.toml"
+              exit 1
+            fi
+          elif [ "$EVENT" = workflow_dispatch ] && [ "$DRY_RUN" = false ]; then
+            echo "::error::publishing needs a v* tag: run this workflow on a tag, or as a dry run"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Whisper $version (publish: $publish)" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build
+    needs: check
+    uses: ./.github/workflows/build.yml
+
+  assemble:
+    name: Assemble release files
+    needs: [check, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PUBLISH: ${{ needs.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: xtask
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+          path: .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{linux-packages,windows-exe,macos-dmg}"
+          path: dist
+          merge-multiple: true
+      - name: update.json and release notes
+        run: |
+          for f in Whisper-Setup.exe Whisper.dmg whisper.deb whisper-arm64.deb whisper.rpm whisper-aarch64.rpm \
+                   whisper-linux.tar.gz whisper-linux-arm64.tar.gz whisper-profile.tar.gz whisper-profile.zip VERSION; do
+            test -s "dist/$f" || { echo "::error::dist/$f is missing"; exit 1; }
+          done
+          cargo xtask manifest
+          cargo xtask notes > build/release-notes.md
+      - name: Dry run - sign with a throwaway key and check the whole verify path
+        if: env.PUBLISH != 'true'
+        run: |
+          cargo xtask signing-selftest
+          cargo xtask checksums
+          (cd dist && sha256sum -c SHA256SUMS)
+      - name: List
+        run: ls -l dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: |
+            dist
+            build/release-notes.md
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [check, assemble]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: xtask
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: .
+      - name: Sign update.json
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::error::the release environment has no UPDATE_SIGNING_KEY secret"
+            exit 1
+          fi
+          key="$RUNNER_TEMP/update-signing.pem"
+          (umask 077 && printf '%s\n' "$UPDATE_SIGNING_KEY" > "$key")
+          cargo xtask sign --key "$key"
+          rm -f "$key"
+      - name: Check the signature with the key Whisper ships
+        run: cargo xtask verify-manifest --key keys/update-signing.pub.pem
+      - name: SHA256SUMS
+        run: |
+          cargo xtask checksums
+          (cd dist && sha256sum -c SHA256SUMS)
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --latest \
+            --title "Whisper $VERSION" \
+            --notes-file build/release-notes.md

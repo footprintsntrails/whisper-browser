@@ -1,0 +1,56 @@
+# Build output
+/target/
+/build/
+/dist/
+
+# A real Firefox profile must never be committed: history, cookies, passwords, sessions
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+prefs.js
+sessionstore*
+cookies*
+key4.db
+logins*.json
+cert9.db
+storage/
+cache2/
+extensions/
+*.xpi
+
+# Session history and local agent settings: never part of the repository
+# (Entire's refs/entire/* are refs, not files; the pre-push hook blocks those)
+.entire/
+.claude/
+CLAUDE.local.md
+
+# Secrets and keys
+.env
+.env.*
+*.pem
+!keys/*.pub.pem
+*.key
+*.p12
+*.pfx
+*.asc
+*.gpg
+id_rsa*
+id_ed25519*
+*.minisign.key
+secrets/
+
+# Logs and temporary files
+*.log
+*.tmp
+tmp/
+__pycache__/
+*.pyc
+
+# OS and editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~

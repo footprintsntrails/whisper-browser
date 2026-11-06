@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Whisper does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Security problems go through private reporting instead (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start Whisper
+        2. …
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - Windows
+        - macOS
+        - Linux (.deb)
+        - Linux (.rpm)
+        - Linux (tarball)
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`whisper --version`, and your Firefox version and kind (normal, Snap, Flatpak, ESR)"
+      placeholder: Whisper 0.1.0, Firefox 145 (Snap)
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        The end of `whisper.log` from the Whisper folder (see the README). Please remove your user name and anything else personal first.
+      render: text
