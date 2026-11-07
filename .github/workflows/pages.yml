@@ -21,14 +21,15 @@ name: pages
 # the host's cache can serve the earlier files for up to 10 minutes.
 #
 # Called by release.yml after a release, and by gecko.yml and gecko-ui-quick.yml after
-# a canary publish; also by hand, and by a push that changes how the site is built or
-# checked (which also redeploys the site after release files were changed by hand).
+# a canary publish (wip/canary only); also by hand, and by a push to wip/canary that
+# changes how the site is built or checked (which also redeploys the site after release
+# files were changed by hand). A push to main never deploys.
 
 on:
   workflow_call:
   workflow_dispatch:
   push:
-    branches: [main, wip/gecko, wip/updates]
+    branches: [wip/canary]
     paths:
       - .github/workflows/pages.yml
       - gecko/scripts/update/site.py

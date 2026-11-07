@@ -1,11 +1,12 @@
 name: gecko-ui-quick
 
-# Development shortcut for Whisper's interface: takes the Linux package of an earlier
-# gecko run, replaces the interface files in it with the ones in this commit
-# (gecko/scripts/repack-ui.py) and runs the smoke test, in minutes instead of a full
-# build. Runs on every push that changes the interface or the smoke test, using the
-# newest gecko run on the branch that has a Linux package; when there is none yet (the
-# branch's first push), it skips with a notice and publishes nothing.
+# Development shortcut for Whisper's interface on wip/canary: takes the Linux package of
+# the last green gecko run on wip/canary, replaces the interface files in it with the
+# ones in this commit (gecko/scripts/repack-ui.py) and runs the smoke test, in minutes
+# instead of a full build. Runs on every push to wip/canary that changes the interface
+# or the smoke test; when wip/canary has no green gecko run with a Linux package yet, or
+# when it is started by hand on another branch, it skips with a notice and publishes
+# nothing.
 #
 # canary: when the smoke test passes on a push and every change since the last green
 # gecko run with a canary build reaches the browser by repacking (repack-ui.py --check),
@@ -16,7 +17,7 @@ name: gecko-ui-quick
 
 on:
   push:
-    branches: [main, wip/gecko, wip/updates]
+    branches: [wip/canary]
     paths:
       - gecko/overlay/browser/components/whisper/**
       - gecko/overlay/browser/branding/whisper/content/about.png
@@ -64,10 +65,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.run_id }}
         run: |
+          if [ "$GITHUB_REF_NAME" != wip/canary ]; then
+            echo "::notice::the interface-only path runs on wip/canary only; skipping on $GITHUB_REF_NAME"
+            echo "Skipped: the interface-only path runs on \`wip/canary\` only." >> "$GITHUB_STEP_SUMMARY"
+            echo "run_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           run_id=$RUN_ID
           if [ -z "$run_id" ]; then
             ids=$(gh run list -R "$GITHUB_REPOSITORY" --workflow gecko.yml --branch "$GITHUB_REF_NAME" \
-                    --limit 30 --json databaseId -q '.[].databaseId')
+                    --status success --limit 30 --json databaseId -q '.[].databaseId')
             for id in $ids; do
               if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" -q '.artifacts[] | select(.expired | not) | .name' \
                    | grep -qx "whisper-$FIREFOX_VERSION-linux-x86_64"; then
@@ -80,8 +87,8 @@ jobs:
             # No build on this branch to put the interface into yet (its first push). An
             # interface change also starts gecko.yml, which builds the branch in full and
             # runs the same smoke test.
-            echo "::notice::no gecko run with a Linux package on $GITHUB_REF_NAME yet: nothing to repack, skipping the quick smoke test (and the canary)"
-            echo "Skipped: no gecko run with a Linux package on \`$GITHUB_REF_NAME\` yet." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::no green gecko run with a Linux package on $GITHUB_REF_NAME yet: nothing to repack, skipping the quick smoke test (and the canary)"
+            echo "Skipped: no green gecko run with a Linux package on \`$GITHUB_REF_NAME\` yet." >> "$GITHUB_STEP_SUMMARY"
             echo "run_id=" >> "$GITHUB_OUTPUT"
             exit 0
           fi

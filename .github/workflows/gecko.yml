@@ -8,16 +8,22 @@ name: gecko
 #                     inside a network namespace that records every host name it looks up
 #   smoke-windows     start the Windows build on Windows and check where it keeps its profile
 #   canary-*          Whisper Canary, the same source as the test edition (variant canary:
-#                     own branding, channel, certificate and profile folder; not on tags)
+#                     own branding, channel, certificate and profile folder); only on
+#                     wip/canary
 #   update-*          the end-to-end update test (gecko-update-test.yml): each build
 #                     updates itself to B, the same source built again with a newer build
 #                     ID, and refuses every update it must refuse; the canary updates to
 #                     its next build, and Whisper and the canary refuse each other's MARs
-#   publish-canary    when everything above is green on a branch (push or by hand): the canary
-#                     packages and MARs, signed with the canary key, go to the rolling
-#                     pre-release `canary`, then pages.yml puts its update.xml on the
-#                     update host (next to the release's). Skipped when the interface-
+#   publish-canary    when everything above is green on wip/canary (push or by hand): the
+#                     canary packages and MARs, signed with the canary key, go to the
+#                     rolling pre-release `canary`, then pages.yml puts its update.xml on
+#                     the update host (next to the release's). Skipped when the interface-
 #                     only path (gecko-ui-quick.yml) already published this commit.
+#
+# The flow (CONTRIBUTING.md): work happens on other branches; a push to wip/canary builds,
+# tests and publishes Whisper Canary; main gets what Canary has proven and runs the full
+# build and tests, but publishes nothing and leaves the update host alone; a tag v* on
+# main publishes the release (release.yml, which runs this workflow as its gate).
 #
 # Artifacts: whisper-<version>-linux-x86_64 (tar.xz), whisper-<version>-windows-x86_64
 # (zip and installer .exe), whisper-canary-<version>-<target> (the same for the canary),
@@ -28,7 +34,7 @@ name: gecko
 
 on:
   push:
-    branches: [main, wip/gecko, wip/updates]
+    branches: [main, wip/canary, wip/gecko, wip/updates]
     paths:
       - gecko/**
       - patches/**
@@ -74,7 +80,7 @@ jobs:
 
   canary-linux:
     name: Canary Linux x86_64
-    if: github.ref_type == 'branch'
+    if: github.ref == 'refs/heads/wip/canary'
     permissions:
       contents: read
       actions: write
@@ -85,7 +91,7 @@ jobs:
 
   canary-windows:
     name: Canary Windows x86_64
-    if: github.ref_type == 'branch'
+    if: github.ref == 'refs/heads/wip/canary'
     permissions:
       contents: read
       actions: write
@@ -96,7 +102,7 @@ jobs:
 
   update-linux:
     name: Update (Linux)
-    # With the canary when it was built (not on tags)
+    # With the canary when it was built (wip/canary only)
     needs: [linux, canary-linux]
     if: ${{ !cancelled() && needs.linux.result == 'success' }}
     permissions:
@@ -283,8 +289,8 @@ jobs:
   publish-canary:
     name: Publish Whisper Canary
     needs: [linux, windows, canary-linux, canary-windows, update-linux, update-windows, smoke-linux, smoke-windows]
-    # A push to a branch, or a run started by hand on one; never on a tag (release.yml)
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_type == 'branch'
+    # A push to wip/canary, or a run started by hand on it; never on main or a tag
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/wip/canary'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: canary

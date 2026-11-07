@@ -15,6 +15,27 @@ recorded, imports from other browsers, and updates itself. A change to Whisper's
 (`gecko/overlay/browser/components/whisper/`) is smoke-tested in minutes: the interface files
 go into the last build (`gecko/scripts/repack-ui.py`, `.github/workflows/gecko-ui-quick.yml`).
 
+### From a change to a release
+
+```
+work branch  ->  wip/canary  ->  main  ->  tag v0.2.0
+                 Canary          tested     release
+```
+
+- **Work branches** (anything but the three below): CI checks the code; pushes to
+  `wip/gecko` and `wip/updates` also build and test the browser. Nothing is published.
+- **`wip/canary`**: a push builds and tests the browser and, when everything is green,
+  publishes **Whisper Canary** (the rolling `canary` pre-release and its update files on the
+  update host). A change to the interface only reaches Canary in minutes: it is repacked
+  into the last green `wip/canary` build and smoke-tested (`gecko-ui-quick.yml`).
+- **`main`**: gets what Canary has proven. A push runs the full build and every test, but
+  publishes nothing and does not touch the update host.
+- **A tag `v*` on `main`** (the version in `gecko/release.env`) builds, tests, signs and
+  publishes the release (`.github/workflows/release.yml`) and its update files.
+
+The update host (GitHub Pages) is always built from both channels together, one deploy at a
+time (`.github/workflows/pages.yml`).
+
 The checks CI runs on every push need [rustup](https://rustup.rs) (`rust-toolchain.toml` pins
 the toolchain of the build tooling in `crates/xtask`) and Python 3:
 
