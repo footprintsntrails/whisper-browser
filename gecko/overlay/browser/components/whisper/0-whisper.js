@@ -131,6 +131,11 @@ pref("network.connectivity-service.enabled", false);
 // Region lookup by IP address
 pref("browser.region.update.enabled", false);
 pref("browser.region.network.url", "");
+// Location: no network location provider. Firefox asks Google (googleapis.com) where
+// you are from the Wi-Fi networks around you when a page you allowed asks for your
+// location. Pages may still ask; they get the operating system's location where it
+// has one, or nothing.
+pref("geo.provider.network.url", "", locked);
 // Updates of Mozilla's system add-ons (Whisper updates as a whole)
 pref("extensions.systemAddon.update.enabled", false, locked);
 pref("extensions.systemAddon.update.url", "", locked);
