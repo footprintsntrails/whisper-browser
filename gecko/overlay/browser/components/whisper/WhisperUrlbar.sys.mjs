@@ -22,6 +22,12 @@ const RESULT_SOURCE = {
   TABS: 4,
 };
 const RESULT_TYPE_TAB_SWITCH = 1;
+const GLOBE = "chrome://global/skin/icons/defaultFavicon.svg";
+
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
+});
 
 function groupOf(result) {
   if (!result) {
@@ -43,6 +49,9 @@ function groupOf(result) {
 
 export const WhisperUrlbar = {
   _strings: null,
+  // Page address -> whether the icon cache has an icon for it (true/false), or the
+  // lookup still running (a promise).
+  _hasIcon: new Map(),
 
   async initWindow(win) {
     const urlbar = win.gURLBar;
@@ -101,6 +110,7 @@ export const WhisperUrlbar = {
       } else {
         row.removeAttribute("data-whisper-group");
       }
+      this._genericIcon(row);
       const label = group && group != previous ? this._strings[group] : null;
       if (label) {
         row.setAttribute("data-whisper-label", label);
@@ -109,6 +119,47 @@ export const WhisperUrlbar = {
       }
       previous = group;
     }
+  },
+
+  /**
+   * A row whose page has no icon shows Firefox's globe; the address bar asks for it as
+   * page-icon:<address>, which draws it in the text colour. Pointing such a row at
+   * the globe itself lets cast.css draw it muted, as in the tab sidebar.
+   */
+  _genericIcon(row) {
+    const icon = row.querySelector(".urlbarView-favicon");
+    const src = icon?.getAttribute("src") ?? "";
+    if (!src.startsWith("page-icon:")) {
+      return;
+    }
+    const url = src.slice("page-icon:".length);
+    const known = this._hasIcon.get(url);
+    if (known === false) {
+      icon.setAttribute("src", GLOBE);
+      return;
+    }
+    if (known !== undefined) {
+      return;
+    }
+    if (this._hasIcon.size > 500) {
+      this._hasIcon.clear();
+    }
+    let uri;
+    try {
+      uri = Services.io.newURI(url);
+    } catch (e) {
+      return;
+    }
+    const lookup = lazy.PlacesUtils.favicons
+      .getFaviconForPage(uri)
+      .then(found => {
+        this._hasIcon.set(url, !!found);
+        if (!found && icon.getAttribute("src") == src) {
+          icon.setAttribute("src", GLOBE);
+        }
+      })
+      .catch(() => this._hasIcon.delete(url));
+    this._hasIcon.set(url, lookup);
   },
 
   /** Engine buttons get their engine's name; the header says how to switch. */

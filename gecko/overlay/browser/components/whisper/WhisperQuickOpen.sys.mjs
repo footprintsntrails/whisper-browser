@@ -14,13 +14,140 @@
  *   - a capturing "command" listener on the window sees the commands before Firefox's
  *     own handler (browser-sets.js): cmd_newNavigatorTabNoEvent is Ctrl+T's,
  *     cmd_newNavigatorTab with a "+" button as its source is the button's;
+ *   - with the field still empty, a provider of the address bar's own kind
+ *     (ProvidersManager.registerProvider) lists the open tabs and the pages visited
+ *     last, from this profile only (no top sites, nothing from the network);
  *   - while the address bar is open this way, the default of browser.urlbar.openintab
  *     is true, Firefox's own setting for "Enter opens in a new tab" (the default
  *     branch, so nothing is written to the profile; a value the user set wins); it is
  *     put back when the address bar loses focus.
  */
 
+import {
+  UrlbarProvider,
+  UrlbarUtils,
+} from "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs";
+
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  ProvidersManager:
+    "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
+  UrlbarResult: "chrome://browser/content/urlbar/UrlbarResult.mjs",
+  UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
+});
+
 const PREF = "whisper.newtab.addressBar";
+const MAX_TABS = 5;
+const MAX_HISTORY = 5;
+
+/**
+ * Results for the empty field that "+" opens: the open tabs (not the current one) and
+ * the pages visited last that are not open, newest first.
+ */
+class WhisperRecentProvider extends UrlbarProvider {
+  get name() {
+    return "WhisperRecent";
+  }
+
+  get type() {
+    return lazy.UrlbarShared.PROVIDER_TYPE.PROFILE;
+  }
+
+  getPriority() {
+    return 1;
+  }
+
+  async isActive(queryContext) {
+    return (
+      WhisperQuickOpen.armedWindows > 0 &&
+      !queryContext.searchString &&
+      !queryContext.restrictSource &&
+      !queryContext.restrictInSearchMode()
+    );
+  }
+
+  async _recentHistory() {
+    const db = await lazy.PlacesUtils.promiseDBConnection();
+    return db.executeCached(
+      `SELECT url, title FROM moz_places
+       WHERE last_visit_date NOT NULL AND hidden = 0
+         AND (url_hash BETWEEN hash('http', 'prefix_lo') AND hash('http', 'prefix_hi'))
+       ORDER BY last_visit_date DESC LIMIT 30`
+    );
+  }
+
+  async startQuery(queryContext, addCallback) {
+    const open = new Set();
+    let tabs = 0;
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      // A private window lists its own tabs only; a normal one, the normal ones.
+      if (
+        win.closed ||
+        lazy.PrivateBrowsingUtils.isWindowPrivate(win) != queryContext.isPrivate
+      ) {
+        continue;
+      }
+      for (const tab of win.gBrowser.tabs) {
+        const url = tab.linkedBrowser.currentURI.spec;
+        open.add(url);
+        if (
+          tabs >= MAX_TABS ||
+          !/^https?:/.test(url) ||
+          url == queryContext.currentPage
+        ) {
+          continue;
+        }
+        tabs++;
+        addCallback(
+          this,
+          new lazy.UrlbarResult({
+            type: lazy.UrlbarShared.RESULT_TYPE.TAB_SWITCH,
+            source: lazy.UrlbarShared.RESULT_SOURCE.TABS,
+            payload: {
+              url,
+              title: tab.label,
+              icon: `page-icon:${url}`,
+              userContext: UrlbarUtils.getUserContextData(
+                tab.userContextId ?? 0
+              ),
+            },
+          })
+        );
+      }
+    }
+    if (queryContext.isPrivate) {
+      return;
+    }
+    let rows = [];
+    try {
+      rows = await this._recentHistory();
+    } catch (e) {
+      console.error("Whisper: recent history for the address bar", e.message ?? e);
+    }
+    let added = 0;
+    for (const row of rows) {
+      const url = row.getResultByName("url");
+      if (added >= MAX_HISTORY || open.has(url)) {
+        continue;
+      }
+      added++;
+      addCallback(
+        this,
+        new lazy.UrlbarResult({
+          type: lazy.UrlbarShared.RESULT_TYPE.URL,
+          source: lazy.UrlbarShared.RESULT_SOURCE.HISTORY,
+          payload: {
+            url,
+            title: row.getResultByName("title") || url,
+            icon: `page-icon:${url}`,
+          },
+        })
+      );
+    }
+  }
+}
 const OPEN_IN_TAB = "openintab";
 const PLUS_BUTTONS = new Set([
   "tabs-newtab-button",
@@ -29,9 +156,19 @@ const PLUS_BUTTONS = new Set([
 ]);
 
 export const WhisperQuickOpen = {
+  // Windows whose address bar is open from "+" (the provider above answers then).
+  armedWindows: 0,
+  _provider: null,
+
   initWindow(win) {
     if (win.whisperQuickOpen) {
       return;
+    }
+    if (!this._provider && win.gURLBar?.sapName) {
+      this._provider = new WhisperRecentProvider();
+      lazy.ProvidersManager.getInstanceForSap(win.gURLBar.sapName).registerProvider(
+        this._provider
+      );
     }
     const onCommand = event => this._onCommand(win, event);
     win.addEventListener("command", onCommand, true);
@@ -72,7 +209,9 @@ export const WhisperQuickOpen = {
     win.gBrowser.userTypedValue = "";
     urlbar.value = "";
     urlbar.select();
-    urlbar.view.autoOpen({ event });
+    if (!event || !urlbar.view.autoOpen({ event })) {
+      urlbar.startQuery({ event });
+    }
   },
 
   _arm(win) {
@@ -94,6 +233,7 @@ export const WhisperQuickOpen = {
         win.gBrowser.selectedBrowser.focus();
       }
     };
+    this.armedWindows++;
     const disarm = () => {
       this._disarm(win);
       // Left without typing anything: the field shows the page's address again.
@@ -104,6 +244,7 @@ export const WhisperQuickOpen = {
     urlbar.inputField.addEventListener("keydown", onKey, true);
     urlbar.inputField.addEventListener("blur", disarm);
     win.whisperQuickOpenArmed = () => {
+      this.armedWindows--;
       urlbar.inputField.removeEventListener("keydown", onKey, true);
       urlbar.inputField.removeEventListener("blur", disarm);
       defaults.setBoolPref(OPEN_IN_TAB, before);

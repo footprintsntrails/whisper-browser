@@ -293,6 +293,13 @@ const click = async () => {
 const out = { button: button.id, before: state() };
 await click();
 out.afterPlus = state();
+// The empty field lists open tabs and recent history from this profile (open tabs: the
+// smoke test's other pages are not open, so history at least has the page we are on).
+for (let i = 0; i < 20 && !gURLBar.view.isOpen; i++) {
+  await sleep(100);
+}
+out.emptyRows = [...gURLBar.view.panel.querySelectorAll(".urlbarView-row")]
+  .filter(r => r.checkVisibility()).map(r => r.result?.providerName);
 gURLBar.value = url;
 gURLBar.handleCommand(new KeyboardEvent("keydown", { key: "Enter" }));
 for (let i = 0; i < 20 && gBrowser.selectedBrowser.currentURI.spec != url; i++) {
@@ -637,7 +644,10 @@ Services.obs.addObserver(observer, "http-on-opening-request");
 const before = gBrowser.tabs.length;
 try {
   BrowserCommands.openTab();
-  await sleep(2500);
+  for (let i = 0; i < 40 && gBrowser.selectedBrowser.currentURI.spec != AboutNewTab.newTabURL; i++) {
+    await sleep(250);
+  }
+  await sleep(1000);
 } finally {
   Services.obs.removeObserver(observer, "http-on-opening-request");
 }
@@ -1286,6 +1296,8 @@ def main():
         b, p, e = plus.get("before", {}), plus.get("afterPlus", {}), plus.get("afterEnter", {})
         report.check("+ opens the address bar in place: no new tab, the field empty and focused",
                      p.get("tabs") == b.get("tabs") and p.get("value") == "" and p.get("focused"), plus)
+        report.check("+ with the field empty lists open tabs and recent history from this profile",
+                     bool(plus.get("emptyRows")) and set(plus["emptyRows"]) == {"WhisperRecent"}, plus.get("emptyRows"))
         report.check("Enter after + opens the address in one new tab",
                      e.get("tabs") == b.get("tabs", 0) + 1 and e.get("url") == plus_page, plus)
         esc, ct, cte = plus.get("afterEsc", {}), plus.get("afterCtrlT", {}), plus.get("afterCtrlTEsc", {})

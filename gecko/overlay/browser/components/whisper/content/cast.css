@@ -431,6 +431,7 @@ menupopup, panel { --panel-border-radius: 10px !important; }
 }
 
 .whisper-sidebar-bar-button {
+  position: relative;
   appearance: none;
   inline-size: 30px;
   block-size: 30px;
@@ -450,6 +451,19 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   &:focus-visible {
     outline: 2px solid var(--w-focus);
     outline-offset: 1px;
+  }
+
+  /* A 40 px target around the 30 px button, invisible, across the bar: taller in the
+   * expanded sidebar's row, wider in the narrow sidebar's column (the buttons sit 2 px
+   * apart along the bar, so not that way). */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -5px 0;
+
+    sidebar-main:not([expanded]) & {
+      inset: 0 -5px;
+    }
   }
 }
 
