@@ -21,7 +21,9 @@ browser runs under the X display in $DISPLAY (xvfb in CI). The test:
      loaded, the slim toolbar (back, forward, reload, address bar), the three sidebar
      modes (with a screenshot of each) with the reload button working in each, the
      auto-hide reveal in the 14 px strip at the left edge (the real X pointer with
-     xdotool when installed), the sidebar menu items and the keyboard shortcut. A local web server on 127.0.0.1 serves the test pages;
+     xdotool when installed), horizontal tabs and back
+     keeping every tab, the sidebar menu items and the keyboard shortcut. A local web
+     server on 127.0.0.1 serves the test pages;
   4. after the idle time the browser has checked for updates on its own (the update
      timer fired; the check itself finds no network here);
   5. the browser quits cleanly (exit code 0), and the profile on disk agrees
@@ -285,6 +287,41 @@ for (let i = 0; i < 25 && after == before; i++) {
   after = browser.browsingContext.currentWindowGlobal?.innerWindowId;
 }
 return { shown: true, reloaded: after != before, url: browser.currentURI.spec };
+"""
+
+TABS_JS = r"""
+// Switches the tab orientation (WhisperLayout) and reports what shows.
+const [tabs] = args;
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const { WhisperLayout } = ChromeUtils.importESModule("moz-src:///browser/components/whisper/WhisperLayout.sys.mjs");
+if (tabs) {
+  WhisperLayout.set({ tabs });
+  await sleep(2500);
+}
+const shown = e => !!e && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0;
+const tabstrip = document.getElementById("TabsToolbar");
+const vertical = document.getElementById("vertical-tabs");
+return {
+  tabs: WhisperLayout.state.tabs,
+  sidebarMode: WhisperLayout.state.sidebarMode,
+  rootTabs: document.documentElement.getAttribute("whisper-tabs"),
+  tabstripShown: shown(tabstrip) && tabstrip.getBoundingClientRect().height > 20,
+  tabsInTabstrip: !!tabstrip.querySelector("#tabbrowser-tabs"),
+  verticalTabListShown: shown(vertical) && !!vertical.querySelector("#tabbrowser-tabs"),
+  sidebarButtonShown: shown(document.getElementById("sidebar-button")),
+  count: gBrowser.tabs.length,
+  pinned: gBrowser.pinnedTabCount,
+};
+"""
+
+ADD_TAB_JS = r"""
+const [pin] = args;
+const tab = gBrowser.addTrustedTab("about:blank");
+if (pin) {
+  gBrowser.pinTab(tab);
+}
+await new Promise(res => setTimeout(res, 500));
+return gBrowser.tabs.length;
 """
 
 MENU_JS = r"""
@@ -674,6 +711,28 @@ def main():
         report.check("compact mode is a narrow icon strip (at most 60 px)", 36 <= widths["compact"] <= 60, widths)
         report.check("expanded mode is wider than compact and at most 240 px",
                      widths["compact"] < widths["expanded"] <= 240, widths)
+
+        # Horizontal tabs on Firefox's own tab strip, and back, keeping every tab.
+        m.run(ADD_TAB_JS, True)
+        before = m.run(TABS_JS, None)
+        horizontal = m.run(TABS_JS, "horizontal")
+        report.facts["tabs_horizontal"] = horizontal
+        capture(m, os.path.join(a.out, "6-horizontal.png"), report)
+        report.check("horizontal tabs: the tab strip shows on top and the sidebar tab list is gone",
+                     horizontal["rootTabs"] == "horizontal" and horizontal["tabstripShown"]
+                     and horizontal["tabsInTabstrip"] and not horizontal["verticalTabListShown"], horizontal)
+        report.check("horizontal tabs: the sidebar button shows (bookmarks, history, passwords)",
+                     horizontal["sidebarButtonShown"], horizontal)
+        rl = m.run(RELOAD_JS)
+        report.check("horizontal: the reload button shows and reloads the page", rl.get("shown") and rl.get("reloaded"),
+                     rl)
+        m.run(ADD_TAB_JS, False)
+        vertical = m.run(TABS_JS, "vertical")
+        report.facts["tabs_vertical_again"] = vertical
+        report.check("back to vertical tabs: every tab and pinned tab is still there, the mode is kept",
+                     vertical["rootTabs"] == "vertical" and vertical["verticalTabListShown"]
+                     and vertical["count"] == before["count"] + 1 and vertical["pinned"] == before["pinned"]
+                     and vertical["sidebarMode"] == "expanded", {"before": before, "after": vertical})
 
         try:
             with open(os.path.join(a.out, "console.txt"), "w") as f:

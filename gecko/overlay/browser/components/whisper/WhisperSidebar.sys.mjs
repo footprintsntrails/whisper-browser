@@ -25,12 +25,15 @@
 
 export const MODE_PREF = "whisper.sidebar.mode";
 const VISIBILITY_PREF = "sidebar.visibility";
+const VERTICAL_TABS_PREF = "sidebar.verticalTabs";
 export const MODES = ["expanded", "compact", "autohide"];
 const DEFAULT_MODE = "expanded";
 const MENU_ITEM_PREFIX = "whisper-sidebar-mode-";
 // After Whisper changes the launcher itself, ignore the resulting attribute changes for
 // this long, so they are not mistaken for the user's choice.
 const QUIET_MS = 600;
+// The same after the tabs move between the top and the sidebar, which Firefox animates.
+const ORIENTATION_QUIET_MS = 1500;
 
 function visibilityFor(mode) {
   return mode == "autohide" ? "expand-on-hover" : "always-show";
@@ -53,6 +56,9 @@ export const WhisperSidebar = {
   _windows: new Set(),
   _observing: false,
   _applying: 0,
+  // Firefox normalizes sidebar.visibility when the tabs change orientation; that is
+  // not the user choosing a mode.
+  _orientationQuietUntil: 0,
 
   get mode() {
     const mode = Services.prefs.getStringPref(MODE_PREF, DEFAULT_MODE);
@@ -66,8 +72,15 @@ export const WhisperSidebar = {
     Services.prefs.setStringPref(MODE_PREF, mode);
   },
 
-  /** The next mode for the keyboard shortcut. */
+  /**
+   * The keyboard shortcut: the next vertical mode. With horizontal tabs it brings the
+   * tabs back to the sidebar, in the mode they had there.
+   */
   cycle() {
+    if (!Services.prefs.getBoolPref(VERTICAL_TABS_PREF, false)) {
+      Services.prefs.setBoolPref(VERTICAL_TABS_PREF, true);
+      return;
+    }
     this.mode = MODES[(MODES.indexOf(this.mode) + 1) % MODES.length];
   },
 
@@ -104,8 +117,11 @@ export const WhisperSidebar = {
       "always-show"
     );
     // Firefox's "Show and hide sidebar" setting is not one of Whisper's modes; the
-    // sidebar then looks and works exactly as in Firefox.
-    if (visibility == "hide-sidebar") {
+    // sidebar then looks and works exactly as in Firefox. Neither are horizontal tabs.
+    if (
+      visibility == "hide-sidebar" ||
+      !Services.prefs.getBoolPref(VERTICAL_TABS_PREF, false)
+    ) {
       root.removeAttribute("whisper-sidebar-mode");
     } else {
       root.setAttribute("whisper-sidebar-mode", this.mode);
@@ -119,6 +135,7 @@ export const WhisperSidebar = {
     this._observing = true;
     Services.prefs.addObserver(MODE_PREF, this);
     Services.prefs.addObserver(VISIBILITY_PREF, this);
+    Services.prefs.addObserver(VERTICAL_TABS_PREF, this);
   },
 
   _stopObserving() {
@@ -128,21 +145,63 @@ export const WhisperSidebar = {
     this._observing = false;
     Services.prefs.removeObserver(MODE_PREF, this);
     Services.prefs.removeObserver(VISIBILITY_PREF, this);
+    Services.prefs.removeObserver(VERTICAL_TABS_PREF, this);
   },
 
   observe(_subject, topic, data) {
     if (topic != "nsPref:changed") {
       return;
     }
-    if (data == MODE_PREF) {
-      const mode = this.mode;
+    if (data == MODE_PREF || data == VERTICAL_TABS_PREF) {
+      // A mode, or the tabs back in the sidebar: Whisper's mode applies (again). After
+      // a switch of the tab orientation Firefox first rearranges the sidebar in its own
+      // observers of that pref, so this waits for them.
       for (const win of this._windows) {
-        this._applyToWindow(win, mode).catch(e =>
-          console.error("Whisper: could not apply the sidebar mode", e)
-        );
+        // Read at the time it applies: the mode itself must not follow what
+        // Firefox does to the launcher while it rearranges the sidebar.
+        const apply = () =>
+          this._applyToWindow(win, this.mode).catch(e =>
+            console.error("Whisper: could not apply the sidebar mode", e)
+          );
+        if (data == VERTICAL_TABS_PREF) {
+          this._orientationQuietUntil = Date.now() + ORIENTATION_QUIET_MS;
+          win.whisperQuietUntil = Date.now() + ORIENTATION_QUIET_MS;
+          this._markRoot(win);
+          win.setTimeout(() => {
+            apply();
+            this._hideLauncherForHorizontalTabs();
+          }, 0);
+        } else {
+          apply();
+        }
       }
-    } else if (data == VISIBILITY_PREF && !this._applying) {
+    } else if (
+      data == VISIBILITY_PREF &&
+      !this._applying &&
+      Date.now() > this._orientationQuietUntil &&
+      Services.prefs.getBoolPref(VERTICAL_TABS_PREF, false)
+    ) {
       this._followFirefoxVisibility();
+    }
+  },
+
+  /**
+   * With horizontal tabs the sidebar's icon strip stays out of the way until the
+   * toolbar's sidebar button opens it (Firefox's "hide-launcher"); Firefox itself
+   * switches to a visibility that keeps the strip on screen.
+   */
+  _hideLauncherForHorizontalTabs() {
+    if (Services.prefs.getBoolPref(VERTICAL_TABS_PREF, false)) {
+      return;
+    }
+    const visibility = Services.prefs.getStringPref(VISIBILITY_PREF, "");
+    if (visibility != "hide-launcher") {
+      this._applying++;
+      try {
+        Services.prefs.setStringPref(VISIBILITY_PREF, "hide-launcher");
+      } finally {
+        this._applying--;
+      }
     }
   },
 
@@ -188,7 +247,7 @@ export const WhisperSidebar = {
       win.closed ||
       controller.inSingleTabWindow ||
       !controller.sidebarRevampEnabled ||
-      !controller.sidebarVerticalTabsEnabled
+      !Services.prefs.getBoolPref(VERTICAL_TABS_PREF, false)
     ) {
       return;
     }
@@ -199,7 +258,10 @@ export const WhisperSidebar = {
     if (visibility == "hide-sidebar" && respectFirefoxMode) {
       return;
     }
-    win.whisperQuietUntil = Date.now() + QUIET_MS;
+    win.whisperQuietUntil = Math.max(
+      win.whisperQuietUntil ?? 0,
+      Date.now() + QUIET_MS
+    );
     this._applying++;
     try {
       const wanted = visibilityFor(mode);
