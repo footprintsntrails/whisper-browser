@@ -637,6 +637,8 @@ class Browser:
 
     def restart_to_update(self):
         """Presses "Restart to update"; returns once the restarted browser is reachable."""
+        # Who listens on the Marionette port now (Linux): the browser that is to quit.
+        before = set(port_owners(self.port)) if not WINDOWS else set()
         pressed = self.m.run(RESTART_JS)
         if not pressed["pressed"]:
             return pressed
@@ -644,8 +646,19 @@ class Browser:
         # only makes Marionette log "an active session has been found".
         self.drop_connection()
         t0 = time.monotonic()
-        if not wait_port(self.port, False, 120):
-            raise RuntimeError("the browser did not quit within 120 s after Restart to update")
+        # The restarted browser can listen on the same port again within a few hundred
+        # milliseconds (0.4 s for the canary in CI), faster than a poll of the port sees
+        # it closed. On Linux the quit is therefore "none of the old listeners listens
+        # any more" (closed, or a new process has it); elsewhere the port is polled often.
+        if before:
+            quit_seen = lambda: not (before & set(port_owners(self.port)))  # noqa: E731
+        else:
+            quit_seen = lambda: not port_open(self.port)  # noqa: E731
+        deadline = time.monotonic() + 120
+        while not quit_seen():
+            if time.monotonic() > deadline:
+                raise RuntimeError("the browser did not quit within 120 s after Restart to update")
+            time.sleep(0.1)
         # The browser now runs the updater, which swaps in the staged update and starts
         # the browser again with the same arguments (Marionette and its port included).
         deadline = time.monotonic() + 300
