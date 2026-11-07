@@ -344,6 +344,21 @@ const items = [...opened.querySelectorAll("menuitem.whisper-sidebar-mode-item")]
 return { state: opened.state, menu: opened.id, items };
 """
 
+SEARCH_JS = r"""
+// The search engines' addresses as Whisper builds them (patches/0033).
+const { SearchService } = ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs");
+await SearchService.init();
+const submission = id => SearchService.getEngineById(id)?.getSubmission("whisper test")?.uri.spec ?? null;
+return {
+  ddg: submission("ddg"),
+  google: submission("google"),
+  bing: submission("bing"),
+  defaultEngine: SearchService.defaultEngine?.id ?? null,
+  appDefaultEngine: SearchService.appDefaultEngine?.id ?? null,
+  engines: SearchService.getVisibleEngines ? (await SearchService.getVisibleEngines()).map(e => e.id) : null,
+};
+"""
+
 CONSOLE_JS = r"""
 // Errors and warnings in the browser console, for diagnosis.
 return Services.console.getMessageArray()
@@ -698,6 +713,13 @@ def main():
         report.facts["start_page"] = page
         report.check("the start page renders (search box and Whisper logo)",
                      isinstance(page, dict) and page.get("hasSearch") and page.get("hasLogo"), page)
+        search = m.run(SEARCH_JS)
+        report.facts["search"] = search
+        codes = re.compile(r"[?&](t|client|pc|form|sourceid|campid)=|firefox|mozilla|ffab", re.I)
+        report.check("search addresses carry no Mozilla partner or attribution codes (DuckDuckGo, Google, Bing)",
+                     all(search.get(e) and "whisper" in search[e] and not codes.search(search[e].split("?", 1)[1])
+                         for e in ("ddg", "google", "bing")),
+                     {e: search.get(e) for e in ("ddg", "google", "bing")})
         menu = m.run(MENU_JS, 100, 450)
         report.facts["menu"] = menu
         labels = [i["label"] for i in menu["items"]]

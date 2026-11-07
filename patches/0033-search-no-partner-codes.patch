@@ -1,0 +1,84 @@
+Whisper: no partner, attribution or telemetry codes in search engine addresses
+
+What: SearchEngineSelector.fetchEngineConfiguration() strips every configured
+engine of its partner code and telemetry suffix, and removes the URL parameters that
+carry them or other attribution: any parameter using {partnerCode}, experiment and
+enterprise parameters, affiliate and campaign parameters (utm_*, eBay's mk*, campid,
+toolid and the like) and "came from Firefox" codes in sourceid, form, fr, src and
+similar (Mozilla-search, MOZLBR, mozff, ...). Suggestion and trending addresses keep
+their format parameters.
+Why: those codes are Mozilla's commercial agreements with the search engines
+(DuckDuckGo's t=ffab, Google's client=firefox-b-d, Bing's pc=MOZI, ...); Whisper is
+not party to them and must not send them, and they tell each search engine the
+search came from Firefox. The selector's output is the one place both the packaged
+configuration and every Remote Settings update pass through, so an update cannot
+bring them back. The smoke test checks the DuckDuckGo and Google search addresses.
+---
+--- a/toolkit/components/search/SearchEngineSelector.sys.mjs
++++ b/toolkit/components/search/SearchEngineSelector.sys.mjs
+@@ -36,6 +36,49 @@
+  * search engines and returns the applicable engines depending
+  * on their region + locale.
+  */
++/**
++ * Whisper: removes the partner code, the telemetry suffix and every attribution
++ * parameter from a configured engine (patches/0033-search-no-partner-codes.patch).
++ * Search pages get only what the search needs; suggestion and trending addresses
++ * keep their format parameters (Google's suggestions answer in the format Firefox
++ * reads only for client=firefox).
++ *
++ * @param {object} engine
++ *   An engine of the refined search configuration.
++ */
++function whisperRemoveCodes(engine) {
++  engine.partnerCode = "";
++  engine.telemetrySuffix = "";
++  let isCode = (param, searchPage) => {
++    let value = param.value ?? "";
++    if (
++      value.includes("{partnerCode}") ||
++      param.experimentConfig != undefined ||
++      param.enterpriseValue != undefined
++    ) {
++      return true;
++    }
++    if (!searchPage) {
++      return false;
++    }
++    // Affiliate and campaign parameters, whatever their value...
++    if (/^(utm_|mk|ff-)|^(campid|cmpid|toolid|customid)$/i.test(param.name)) {
++      return true;
++    }
++    // ... and the usual places for a "came from Firefox" code.
++    return (
++      /^(sourceid|form|fr|frm|src|nil_ch|s)$/i.test(param.name) &&
++      /moz|firefox|^ff|^mz/i.test(value)
++    );
++  };
++  for (let [type, url] of Object.entries(engine.urls ?? {})) {
++    if (url?.params) {
++      let searchPage = type == "search" || type == "searchForm";
++      url.params = url.params.filter(p => !isCode(p, searchPage));
++    }
++  }
++}
++
+ export class SearchEngineSelector {
+   /**
+    * @param {() => void} listener
+@@ -233,6 +276,15 @@
+       e => !e.optional
+     );
+ 
++    // Whisper: no partner, attribution or telemetry codes in any engine's URLs
++    // (patches/0033-search-no-partner-codes.patch). They belong to Mozilla's
++    // agreements with the search engines and tell them the search came from
++    // Firefox. This runs on every configuration, the packaged one and every
++    // Remote Settings update alike.
++    for (let engine of refinedSearchConfig.engines) {
++      whisperRemoveCodes(engine);
++    }
++
+     if (
+       !refinedSearchConfig.appDefaultEngineId ||
+       !refinedSearchConfig.engines.find(
