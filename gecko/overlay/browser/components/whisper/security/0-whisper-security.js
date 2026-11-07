@@ -75,3 +75,20 @@ pref("dom.reporting.header.enabled", false);
 pref("security.OCSP.enabled", 0);
 pref("security.pki.crlite_mode", 2, locked);
 
+// --- Recovery phrase guard (WhisperInputGuardChild.sys.mjs) ------------------------
+// A wallet recovery phrase (12-24 words of an official BIP39 list with a valid
+// checksum, or an Electrum seed) typed, pasted or dropped into a web page is stopped
+// before the page receives it, with a warning; holding a button for 3 seconds allows
+// that one field. Wallet extensions are not affected.
+pref("whisper.security.seedguard.enabled", true);
+// While typing, the field is paused after this many complete words that are all from
+// one list (0: only the whole phrase is stopped). At 6 of 12 words the rest cannot be
+// guessed; ordinary text starts with 6 list words in about 1 field in 8,700.
+pref("whisper.security.seedguard.pause_after_words", 6);
+
+// --- Swapped address guard (WhisperInputGuardChild.sys.mjs) ------------------------
+// A pasted cryptocurrency address is compared with the last address copied in
+// Whisper (Copy or Ctrl+C on a page) within the minutes below; a different address of
+// the same chain is stopped with a warning that shows both. In memory only.
+pref("whisper.security.addressguard.enabled", true);
+pref("whisper.security.addressguard.minutes", 10);

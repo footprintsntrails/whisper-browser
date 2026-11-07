@@ -1,0 +1,150 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Whisper's guard dialog. Calm on purpose: no red, no shield, no alarm icon; the
+   message carries the weight. Design-system tokens throughout, so the dark and light
+   themes and high-contrast mode follow. Only transform animates. */
+
+:root {
+  min-width: 36em;
+  max-width: 42em;
+}
+
+.guard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-medium, 8px);
+  padding: var(--space-xlarge, 16px) var(--space-xxlarge, 24px);
+  font: menu;
+  font-size: var(--font-size-root, 15px);
+  color: var(--text-color);
+  line-height: 1.45;
+}
+
+.guard-title {
+  margin: 0;
+  font-size: var(--font-size-xlarge, 1.4em);
+  font-weight: var(--font-weight-bold, 600);
+}
+
+.guard-lead {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: var(--font-weight-bold, 600);
+}
+
+.guard-body > p {
+  margin-block: 0 var(--space-small, 6px);
+}
+
+.guard-body .note,
+.hold-hint {
+  color: var(--text-color-deemphasized);
+  font-size: 0.95em;
+}
+
+.address {
+  margin-block-end: var(--space-small, 6px);
+}
+
+.address-label {
+  margin: 0;
+  color: var(--text-color-deemphasized);
+}
+
+.address-value {
+  margin: 2px 0 0;
+  padding: var(--space-small, 6px) var(--space-medium, 8px);
+  border: 1px solid var(--border-color-card, var(--border-color));
+  border-radius: var(--border-radius-small, 4px);
+  font-family: monospace;
+  font-size: 1.05em;
+  word-break: break-all;
+  user-select: all;
+}
+
+/* What differs is underlined and outlined as well as tinted: not colour alone. */
+.address-value mark {
+  background-color: var(--color-yellow-10, Mark);
+  color: inherit;
+  text-decoration: underline 2px;
+  outline: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .address-value mark {
+    background-color: var(--color-yellow-80, Mark);
+  }
+}
+
+.guard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-small, 6px);
+  margin-block-start: var(--space-medium, 8px);
+}
+
+.guard-actions button {
+  min-height: 32px;
+  min-width: 6em;
+  padding-inline: var(--space-large, 12px);
+}
+
+/* The safe choice is last, where the eye ends (and where Firefox puts the default). */
+.guard-actions button.primary {
+  order: 1;
+}
+
+.hold {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.hold-track {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--border-color, GrayText);
+  overflow: hidden;
+}
+
+.hold-progress {
+  display: block;
+  height: 100%;
+  background-color: var(--text-color, CanvasText);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.hold.holding .hold-progress {
+  transform: scaleX(1);
+  transition: transform 3s linear;
+}
+
+.hold.held .hold-progress {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hold.holding .hold-progress {
+    transform: scaleX(0);
+    transition: none;
+  }
+}
+
+.guard-status {
+  margin: 0;
+  min-height: 1.2em;
+  text-align: end;
+  color: var(--text-color-deemphasized);
+}
+
+:focus-visible {
+  outline: var(--focus-outline, 2px solid AccentColor);
+  outline-offset: var(--focus-outline-offset, 2px);
+}

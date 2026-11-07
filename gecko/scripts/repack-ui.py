@@ -7,6 +7,9 @@ in an unpacked Linux package, so a change can be smoke-tested in minutes
 (.github/workflows/gecko-ui-quick.yml). Release packages always come from a full build.
 
 Usage: repack-ui.py APP_DIR      (the folder that holds the `whisper` program)
+       repack-ui.py APP_DIR --wasm FILE  (also the guard engine built by
+                                     gecko/scripts/build-wasm.sh; without it the
+                                     package keeps the engine it has)
        repack-ui.py --check FILE... (exit 0 if a change to these repository files
                                      reaches the browser completely by repacking:
                                      each is one of the files below, or changes
@@ -45,6 +48,36 @@ FILES = [
 ]
 
 
+# Whisper's security features (gecko/overlay/.../whisper/security) are new files, not
+# replacements: a build made before they existed lacks them, so the repack adds the
+# missing entries (and WhisperSecurity.manifest's lines to the jar's components
+# manifest) instead of refusing. Where each file goes follows security/jar.mn and
+# security/moz.build.
+SECURITY = f"{WHISPER}/security"
+SECURITY_MANIFEST = f"{SECURITY}/WhisperSecurity.manifest"
+
+
+def security_files():
+    """(jar, entry, source relative to gecko/overlay) for every security file."""
+    out = []
+    root = os.path.join(OVERLAY, SECURITY)
+    for dirpath, _, files in os.walk(root):
+        for f in sorted(files):
+            rel = os.path.relpath(os.path.join(dirpath, f), root)
+            src = f"{SECURITY}/{rel}"
+            if rel.endswith(".sys.mjs") and "/" not in rel:
+                out.append(("omni.ja", f"moz-src/{SECURITY}/{rel}", src))
+            elif rel.startswith("content/"):
+                out.append(("browser/omni.ja", f"chrome/browser/content/browser/whisper/security/{rel[8:]}", src))
+            elif rel.startswith("locales/en-US/"):
+                out.append(("browser/omni.ja", f"localization/en-US/whisper/{os.path.basename(rel)}", src))
+            elif rel == "0-whisper-security.js":
+                out.append(("browser/omni.ja", "defaults/preferences/0-whisper-security.js", src))
+            elif rel.startswith("settings/"):
+                out.append(("browser/omni.ja", f"chrome/browser/content/browser/whisper/security/{rel}", src))
+    return out
+
+
 # What a full build is made from (the paths in gecko.yml's push filter). A change
 # there, other than to a file in FILES or to NOT_BUILT, needs the full build.
 BUILT = ("gecko/", "patches/", "profile/chrome/fonts/", "assets/icon/", "assets/installer/",
@@ -55,7 +88,8 @@ NOT_BUILT = ("gecko/scripts/smoke/", "gecko/scripts/update/", "gecko/scripts/rep
 
 def can_repack(changed):
     """The changed repository files that a repack cannot bring into a build."""
-    sources = {f"gecko/overlay/{src}" for _, _, src in FILES}
+    sources = {f"gecko/overlay/{src}" for _, _, src in FILES + security_files()}
+    sources.add(f"gecko/overlay/{SECURITY_MANIFEST}")
     blocking = []
     for path in changed:
         if path in sources or not path.startswith(BUILT) or path.startswith(NOT_BUILT):
@@ -64,13 +98,19 @@ def can_repack(changed):
     return blocking
 
 
-def repack(jar, replacements):
+def repack(jar, replacements, additions=None, manifest_lines=None):
     """Rewrites `jar` with `replacements` (entry name -> file), keeping everything else
     of every entry as mach package wrote it: order, compression (omni.ja entries are
     stored, not deflated), flags and attributes, and the jar's own file mode. A
     replacement started with mkstemp's 0600 once, which made omni.ja unreadable for
     anyone but the user who repacked it: Firefox then stops with "The installation
-    seems to be corrupt"."""
+    seems to be corrupt".
+
+    `additions` (entry name -> file) replace an entry when the jar has it and are
+    appended, stored like their neighbours, when it does not. `manifest_lines` are
+    added to components/components.manifest if missing."""
+    additions = additions or {}
+    manifest_lines = manifest_lines or []
     mode = stat.S_IMODE(os.stat(jar).st_mode)
     with zipfile.ZipFile(jar) as zin:
         infos = zin.infolist()
@@ -81,32 +121,52 @@ def repack(jar, replacements):
             raise SystemExit(f"{jar}: no entry {missing}; similar entries: {near[:20]}")
         fd, tmp = tempfile.mkstemp(dir=os.path.dirname(jar), suffix=".ja")
         os.close(fd)
+        everything = {**replacements, **additions}
         with zipfile.ZipFile(tmp, "w") as zout:
             for info in infos:
                 data = zin.read(info.filename)
-                if info.filename in replacements:
-                    with open(replacements[info.filename], "rb") as f:
-                        data = f.read()
-                    if info.filename.endswith(".ftl"):
-                        # As mach package does: Fluent comments (license header too) are
-                        # left out of the package.
-                        data = b"".join(line for line in data.splitlines(keepends=True) if not line.startswith(b"#"))
+                if info.filename in everything:
+                    data = read_source(info.filename, everything[info.filename])
                     print(f"  {os.path.basename(jar)}: {info.filename}")
+                elif info.filename == "components/components.manifest" and manifest_lines:
+                    have = data.decode().splitlines()
+                    extra = [line for line in manifest_lines if line not in have]
+                    if extra:
+                        data = (data.decode().rstrip("\n") + "\n" + "\n".join(extra) + "\n").encode()
+                        print(f"  {os.path.basename(jar)}: {info.filename} (+{len(extra)} lines)")
                 zout.writestr(info, data, compress_type=info.compress_type)
+            template = infos[-1]
+            for name, src in additions.items():
+                if name in names:
+                    continue
+                info = zipfile.ZipInfo(name, date_time=template.date_time)
+                info.external_attr = template.external_attr
+                info.create_system = template.create_system
+                zout.writestr(info, read_source(name, src), compress_type=zipfile.ZIP_STORED)
+                print(f"  {os.path.basename(jar)}: {name} (new)")
     check_same_layout(jar, tmp)
     os.chmod(tmp, mode)
     os.replace(tmp, jar)
 
 
+def read_source(name, src):
+    with open(src, "rb") as f:
+        data = f.read()
+    if name.endswith(".ftl"):
+        # As mach package does: Fluent comments (license header too) are left out.
+        data = b"".join(line for line in data.splitlines(keepends=True) if not line.startswith(b"#"))
+    return data
+
+
 def check_same_layout(original, rewritten):
     """The rewritten jar has the same entries in the same order, each with the same
-    compression, flags and attributes."""
+    compression, flags and attributes; new entries may only follow them."""
     keys = ("filename", "compress_type", "flag_bits", "extra", "external_attr", "create_system", "date_time")
     with zipfile.ZipFile(original) as a, zipfile.ZipFile(rewritten) as b:
         if b.testzip() is not None:
             raise SystemExit(f"{rewritten}: a damaged entry")
         old = [tuple(getattr(i, k) for k in keys) for i in a.infolist()]
-        new = [tuple(getattr(i, k) for k in keys) for i in b.infolist()]
+        new = [tuple(getattr(i, k) for k in keys) for i in b.infolist()][:len(old)]
     if old != new:
         bad = next(i for i, (x, y) in enumerate(zip(old, new)) if x != y) if len(old) == len(new) else None
         raise SystemExit(f"{rewritten}: entries differ from {original}"
@@ -120,6 +180,9 @@ def main():
             print(f"needs a full build: {f}")
         sys.exit(1 if blocking else 0)
     app = sys.argv[1]
+    wasm = None
+    if "--wasm" in sys.argv:
+        wasm = sys.argv[sys.argv.index("--wasm") + 1]
     # Whisper Canary's branding is the release one with gecko/variants/canary/branding
     # over it (prepare.sh); take its own version of a branding file where it has one.
     with open(os.path.join(app, "application.ini"), encoding="utf-8") as f:
@@ -132,8 +195,17 @@ def main():
             if os.path.isfile(own):
                 path = own
         by_jar.setdefault(os.path.join(app, jar), {})[inner] = path
-    for jar, replacements in by_jar.items():
-        repack(jar, replacements)
+    additions = {}
+    for jar, inner, src in security_files():
+        additions.setdefault(os.path.join(app, jar), {})[inner] = os.path.join(OVERLAY, src)
+    if wasm:
+        additions.setdefault(os.path.join(app, "browser/omni.ja"), {})[
+            "chrome/browser/content/browser/whisper/security/wcore.wasm"] = wasm
+    lines = [line for line in open(os.path.join(OVERLAY, SECURITY_MANIFEST), encoding="utf-8").read().splitlines()
+             if line.startswith("category ")]
+    for jar in sorted(set(by_jar) | set(additions)):
+        repack(jar, by_jar.get(jar, {}), additions.get(jar),
+               lines if jar.endswith(os.path.join("browser", "omni.ja")) else None)
 
 
 if __name__ == "__main__":

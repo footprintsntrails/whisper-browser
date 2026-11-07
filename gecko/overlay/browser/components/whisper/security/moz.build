@@ -2,8 +2,37 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# Whisper's security features. All new files.
+# Whisper's security features: input guards (recovery phrases, swapped addresses),
+# the download check, external programs, clean links, panic and burn, and the log of
+# Whisper's own connections. All new files; loaded from WhisperSecurity.manifest
+# through the same window lifecycle categories as the rest of Whisper.
 #
 #   0-whisper-security.js          default (and locked) prefs; reasons in gecko/prefs-manifest.json
+#   WhisperSecurity.manifest       registers WhisperSecurity with Firefox's categories
+#   WhisperSecurity.sys.mjs        entry point: actors, hooks, shortcuts, menus
+#   WhisperInputGuard*.sys.mjs     the page-input actor (content process) and its parent
+#   SeedPhrase, SeedWordlists      recovery phrase detection (BIP39 lists, Electrum)
+#   CryptoAddress, WhisperHash     address recognition and comparison; SHA-2 helpers
+#   WhisperAddressMemory           the last copied address, in memory only
+#   WhisperGuardDialog             opens the guard dialog over a tab
+#   content/                       dialogs, the hold-to-allow button, the guard worker
+#   settings/                      settings fragments for the Whisper pane
+#   locales/                       strings
+
+JAR_MANIFESTS += ["jar.mn"]
 
 JS_PREFERENCE_FILES += ["0-whisper-security.js"]
+
+EXTRA_COMPONENTS += ["WhisperSecurity.manifest"]
+
+MOZ_SRC_FILES += [
+    "CryptoAddress.sys.mjs",
+    "SeedPhrase.sys.mjs",
+    "SeedWordlists.sys.mjs",
+    "WhisperAddressMemory.sys.mjs",
+    "WhisperGuardDialog.sys.mjs",
+    "WhisperHash.sys.mjs",
+    "WhisperInputGuardChild.sys.mjs",
+    "WhisperInputGuardParent.sys.mjs",
+    "WhisperSecurity.sys.mjs",
+]

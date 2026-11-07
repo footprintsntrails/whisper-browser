@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- Test page for Whisper's input guards (security_test.py). It plays a page that
+     wants a recovery phrase: it records every paste, beforeinput, input and keydown
+     event it receives, and the field values it can read, in window.pageLog. The test
+     reads that log to check what the page saw. Served from 127.0.0.1 only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Input guard test</title>
+<style>
+  body { font: 16px sans-serif; margin: 2em; }
+  input, textarea { display: block; margin: 0.5em 0; width: 40em; font: inherit; }
+  #words input { display: inline-block; width: 8em; }
+</style>
+</head>
+<body>
+<h1>Import your wallet</h1>
+<label>Recovery phrase <input id="single" autocomplete="off"></label>
+<label>Or here <textarea id="area" rows="3"></textarea></label>
+<form id="words">
+  <input id="w1"><input id="w2"><input id="w3"><input id="w4"><input id="w5"><input id="w6">
+  <input id="w7"><input id="w8"><input id="w9"><input id="w10"><input id="w11"><input id="w12">
+</form>
+<h2>Send</h2>
+<p>Deposit address: <span id="addr">bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4</span></p>
+<label>Recipient <input id="to" autocomplete="off"></label>
+<script>
+  window.pageLog = [];
+  const note = (type, e) => {
+    const t = e.target;
+    let data = null;
+    if (type == "paste") {
+      data = e.clipboardData ? e.clipboardData.getData("text/plain") : null;
+    } else if (type == "beforeinput" || type == "input") {
+      data = e.data;
+    } else if (type == "keydown") {
+      data = e.key;
+    }
+    window.pageLog.push({ type, id: t && t.id, data, value: t && "value" in t ? t.value : null });
+  };
+  for (const type of ["paste", "drop", "beforeinput", "input", "keydown", "copy"]) {
+    // Capturing on window: the earliest a page can listen.
+    window.addEventListener(type, e => note(type, e), true);
+  }
+</script>
+</body>
+</html>

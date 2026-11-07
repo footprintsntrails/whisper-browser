@@ -50,6 +50,11 @@ jobs:
           python3 -m py_compile gecko/scripts/*.py gecko/scripts/*/*.py
       - name: Every script that is run directly is executable
         run: python3 .github/check-scripts.py
+      - name: Security features' JavaScript (syntax, and the detectors' unit tests)
+        run: |
+          find gecko/overlay/browser/components/whisper/security gecko/tests -name '*.mjs' -print0 |
+            xargs -0 -n1 node --check
+          node --test gecko/tests/security/
       - name: Desktop entry
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q desktop-file-utils

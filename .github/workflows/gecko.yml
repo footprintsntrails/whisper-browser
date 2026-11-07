@@ -122,7 +122,8 @@ jobs:
     name: Smoke test (Linux)
     needs: linux
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The first-start test idles 150 s and the network test about 8 minutes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -163,6 +164,20 @@ jobs:
         run: |
           xvfb-run -a -s "-screen 0 1440x900x24" \
             python3 gecko/scripts/smoke/import_test.py --app "$RUNNER_TEMP/app/whisper" --out "$RUNNER_TEMP/smoke/import"
+      # Each security feature blocks what it should and lets a legitimate case through,
+      # on local pages (127.0.0.1) only.
+      - name: Security test
+        if: ${{ !cancelled() }}
+        run: |
+          xvfb-run -a -s "-screen 0 1440x900x24" \
+            python3 gecko/scripts/smoke/security_test.py --app "$RUNNER_TEMP/app/whisper" --out "$RUNNER_TEMP/smoke/security"
+      # The first-start test above answers "no such name" to every lookup; this one
+      # answers every name with a local sink, so requests that follow a server's reply
+      # show up too, and it makes the periodic jobs (updates, Remote Settings, add-ons,
+      # media plugins) run at once instead of after hours.
+      - name: Network test with servers answering
+        if: ${{ !cancelled() }}
+        run: gecko/scripts/smoke/run-network.sh "$RUNNER_TEMP/app/whisper" "$RUNNER_TEMP/smoke/network"
       - name: Summary
         if: always()
         run: |
@@ -171,6 +186,10 @@ jobs:
             cat "$RUNNER_TEMP/smoke/report.md" 2>/dev/null || echo "no report"
             echo "### Import test"
             cat "$RUNNER_TEMP/smoke/import/report.md" 2>/dev/null || echo "no report"
+            echo "### Security test"
+            cat "$RUNNER_TEMP/smoke/security/security-report.md" 2>/dev/null || echo "no report"
+            echo "### Network test with servers answering"
+            cat "$RUNNER_TEMP/smoke/network/network-report.md" 2>/dev/null || echo "no report"
             echo
             echo "### Host names looked up on the first start (DNS, nothing was contacted)"
             echo '```'

@@ -1,0 +1,13 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+browser.jar:
+    content/browser/whisper/security/guard-dialog.xhtml   (content/guard-dialog.xhtml)
+    content/browser/whisper/security/guard-dialog.mjs     (content/guard-dialog.mjs)
+    content/browser/whisper/security/guard-dialog.css     (content/guard-dialog.css)
+    content/browser/whisper/security/hold-button.mjs      (content/hold-button.mjs)
+
+# English only for now, shipped as-is for every locale (as whisper.ftl).
+[localization] @AB_CD@.jar:
+    whisper/whisper-security.ftl                         (locales/en-US/whisper-security.ftl)

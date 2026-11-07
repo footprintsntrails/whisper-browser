@@ -569,6 +569,22 @@
       "why": "Traces on this device The session file keeps tabs and history for restore, but never cookies or what was typed into forms (0 would store both for every site, 1 for http only). Downloads do not appear in the system's \"recent documents\" (Windows Start menu, GTK recent files). Desktop shortcuts made from a page do not store the site's icon on disk. Windows Restart Manager: Whisper does not register its command line (with the profile path) to be restarted after a Windows update.",
       "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
     },
+    "whisper.security.addressguard.enabled": {
+      "why": "Swapped address guard (WhisperInputGuardChild.sys.mjs) A pasted cryptocurrency address is compared with the last address copied in Whisper (Copy or Ctrl+C on a page) within the minutes below; a different address of the same chain is stopped with a warning that shows both. In memory only.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.addressguard.minutes": {
+      "why": "Swapped address guard (WhisperInputGuardChild.sys.mjs) A pasted cryptocurrency address is compared with the last address copied in Whisper (Copy or Ctrl+C on a page) within the minutes below; a different address of the same chain is stopped with a warning that shows both. In memory only.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.seedguard.enabled": {
+      "why": "Recovery phrase guard (WhisperInputGuardChild.sys.mjs) A wallet recovery phrase (12-24 words of an official BIP39 list with a valid checksum, or an Electrum seed) typed, pasted or dropped into a web page is stopped before the page receives it, with a warning; holding a button for 3 seconds allows that one field. Wallet extensions are not affected.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.seedguard.pause_after_words": {
+      "why": "Recovery phrase guard (WhisperInputGuardChild.sys.mjs) A wallet recovery phrase (12-24 words of an official BIP39 list with a valid checksum, or an Electrum seed) typed, pasted or dropped into a web page is stopped before the page receives it, with a warning; holding a button for 3 seconds allows that one field. Wallet extensions are not affected. While typing, the field is paused after this many complete words that are all from one list (0: only the whole phrase is stopped). At 6 of 12 words the rest cannot be guessed; ordinary text starts with 6 list words in about 1 field in 8,700.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
     "whisper.sidebar.mode": {
       "why": "Whisper How the tab sidebar looks: \"compact\" (icons only, a narrow strip), \"autohide\" (hidden, slides in from the left edge) or \"expanded\" (names and icons, larger tabs). Switch with Ctrl+Alt+S or from the sidebar's right-click menu.",
       "file": "gecko/overlay/browser/components/whisper/0-whisper.js"
