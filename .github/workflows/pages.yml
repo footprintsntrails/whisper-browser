@@ -1,15 +1,28 @@
 name: pages
 
 # Deploys Whisper's update host (GitHub Pages). A Pages deploy replaces the whole site,
-# so the site is always built here, in one job, from both channels as they are
-# published on GitHub: the update.xml files of the newest release (assets of the newest
-# non-pre-release that has them) and those of Whisper Canary (assets of the rolling
-# canary pre-release). A canary publish never drops the release files, and a release
-# never drops the canary's (gecko/scripts/update/site.py).
+# so the site is always built here from both channels as they are published on GitHub:
+# the update.xml files of the newest release (assets of the newest non-pre-release that
+# has them) and those of Whisper Canary (assets of the rolling canary pre-release). A
+# canary publish never drops the release files, and a release never drops the canary's
+# (gecko/scripts/update/site.py).
+#
+# One deploy at a time, across every workflow: the "deploy" job builds the site and
+# deploys it as one unit in the concurrency group pages-deploy, so the files are read
+# from the releases only when its turn has come, and a deploy can never put older files
+# back over a newer one's. GitHub keeps at most one deploy waiting in the group: a
+# newer one that arrives replaces it (the replaced one shows as cancelled; the newer
+# one deploys its files too, since it reads both channels when its turn comes).
+#
+# "check" then asks the host for every update.xml this run deployed
+# (gecko/scripts/update/check_site.py): each must be served as deployed, its MAR with
+# the size and SHA-512 it gives, or be replaced by a newer build from a later deploy.
+# It runs after the deploy, outside the group, so the next deploy does not wait for it;
+# the host's cache can serve the earlier files for up to 10 minutes.
 #
 # Called by release.yml after a release, and by gecko.yml and gecko-ui-quick.yml after
-# a canary publish; also by hand, and by a push that changes how the site is built
-# (which also redeploys the site after release files were changed by hand).
+# a canary publish; also by hand, and by a push that changes how the site is built or
+# checked (which also redeploys the site after release files were changed by hand).
 
 on:
   workflow_call:
@@ -19,15 +32,26 @@ on:
     paths:
       - .github/workflows/pages.yml
       - gecko/scripts/update/site.py
+      - gecko/scripts/update/check_site.py
 
 permissions:
   contents: read
 
 jobs:
-  site:
-    name: Update host files (both channels)
+  deploy:
+    name: Build and deploy (both channels, one deploy at a time)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,18 +64,27 @@ jobs:
           # shellcheck source=gecko/release.env
           . gecko/release.env
           mkdir -p "$RUNNER_TEMP/release" "$RUNNER_TEMP/canary"
+          # Every question to GitHub is asked so that a failed answer stops the deploy:
+          # a channel left out by mistake would disappear from the host.
+          tags=$(gh release list --exclude-drafts --exclude-pre-releases --limit 50 --json tagName -q '.[].tagName')
           release=''
-          for tag in $(gh release list --exclude-drafts --exclude-pre-releases --limit 50 --json tagName -q '.[].tagName'); do
-            if gh release view "$tag" --json assets -q '.assets[].name' | grep -qx 'update-linux-x86_64.xml'; then
+          for tag in $tags; do
+            assets=$(gh release view "$tag" --json assets -q '.assets[].name')
+            if grep -qx 'update-linux-x86_64.xml' <<< "$assets"; then
               gh release download "$tag" --pattern 'update-*.xml' --dir "$RUNNER_TEMP/release"
               release=$tag
               break
             fi
           done
           canary=''
-          if gh release view "$CANARY_TAG" --json assets -q '.assets[].name' 2> /dev/null | grep -q '^update-canary-'; then
-            gh release download "$CANARY_TAG" --pattern 'update-canary-*.xml' --dir "$RUNNER_TEMP/canary"
-            canary=$CANARY_TAG
+          if assets=$(gh api "repos/$GH_REPO/releases/tags/$CANARY_TAG" -q '.assets[].name' 2> "$RUNNER_TEMP/canary.err"); then
+            if grep -q '^update-canary-' <<< "$assets"; then
+              gh release download "$CANARY_TAG" --pattern 'update-canary-*.xml' --dir "$RUNNER_TEMP/canary"
+              canary=$CANARY_TAG
+            fi
+          elif ! grep -q 'HTTP 404' "$RUNNER_TEMP/canary.err"; then
+            cat "$RUNNER_TEMP/canary.err" >&2
+            exit 1
           fi
           echo "release: ${release:-none yet}; canary: ${canary:-none yet}"
           python3 gecko/scripts/update/site.py --site "$RUNNER_TEMP/site" \
@@ -65,54 +98,44 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      # Named per attempt: a re-run builds and uploads the site again.
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: ${{ runner.temp }}/site
-      # The same files again, to compare with what the host serves after the deploy.
+      # The same files again, for the check and for the record.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: update-host-site
           path: ${{ runner.temp }}/site/
+          overwrite: true
           retention-days: 7
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
 
-  deploy:
-    name: Deploy (GitHub Pages)
-    needs: site
+  check:
+    name: Installed copies can see the updates
+    needs: deploy
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    # One deploy at a time; each one carries both channels, so the last one is right.
-    concurrency:
-      group: pages-deploy
-      cancel-in-progress: false
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: deploy
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: update-host-site
           path: ${{ runner.temp }}/site
-      - name: Installed copies can see the updates
+      - name: Every update.xml this run deployed is served, or a newer deploy replaced it
         run: |
-          # shellcheck source=gecko/release.env
-          . gecko/release.env
-          for file in $(cd "$RUNNER_TEMP/site" && find update -name update.xml | sort); do
-            url="$UPDATE_BASE_URL/$file"
-            ok=''
-            for _ in $(seq 1 30); do
-              if curl -fsS "$url" -o served.xml && cmp -s served.xml "$RUNNER_TEMP/site/$file"; then ok=1; break; fi
-              sleep 10
-            done
-            [ -n "$ok" ] || { echo "::error::$url does not serve the deployed file"; exit 1; }
-            mar=$(sed -n 's/.* URL="\([^"]*\)".*/\1/p' served.xml)
-            curl -fsSL -o /dev/null -w "$file: OK; MAR %{http_code} after %{num_redirects} redirect(s), %{size_download} bytes\n" "$mar"
-          done
+          status=0
+          python3 -u gecko/scripts/update/check_site.py --site "$RUNNER_TEMP/site" | tee "$RUNNER_TEMP/check.txt" || status=$?
+          {
+            echo "## Update host, as installed copies see it"
+            echo '```'
+            sed 's/^::error:://' "$RUNNER_TEMP/check.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

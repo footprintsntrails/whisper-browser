@@ -4,7 +4,8 @@ name: gecko-ui-quick
 # gecko run, replaces the interface files in it with the ones in this commit
 # (gecko/scripts/repack-ui.py) and runs the smoke test, in minutes instead of a full
 # build. Runs on every push that changes the interface or the smoke test, using the
-# newest gecko run on the branch that has a Linux package.
+# newest gecko run on the branch that has a Linux package; when there is none yet (the
+# branch's first push), it skips with a notice and publishes nothing.
 #
 # canary: when the smoke test passes on a push and every change since the last green
 # gecko run with a canary build reaches the browser by repacking (repack-ui.py --check),
@@ -45,6 +46,10 @@ jobs:
     name: Smoke test with this commit's interface files
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    outputs:
+      # Empty when the branch has no gecko run with a Linux package yet: then nothing
+      # was tested and the canary job does not run.
+      run_id: ${{ steps.source.outputs.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,8 +67,9 @@ jobs:
         run: |
           run_id=$RUN_ID
           if [ -z "$run_id" ]; then
-            for id in $(gh run list -R "$GITHUB_REPOSITORY" --workflow gecko.yml --branch "$GITHUB_REF_NAME" \
-                          --limit 30 --json databaseId -q '.[].databaseId'); do
+            ids=$(gh run list -R "$GITHUB_REPOSITORY" --workflow gecko.yml --branch "$GITHUB_REF_NAME" \
+                    --limit 30 --json databaseId -q '.[].databaseId')
+            for id in $ids; do
               if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" -q '.artifacts[] | select(.expired | not) | .name' \
                    | grep -qx "whisper-$FIREFOX_VERSION-linux-x86_64"; then
                 run_id=$id
@@ -71,38 +77,51 @@ jobs:
               fi
             done
           fi
-          if [ -z "$run_id" ]; then echo "::error::no gecko run with a Linux package yet"; exit 1; fi
+          if [ -z "$run_id" ]; then
+            # No build on this branch to put the interface into yet (its first push). An
+            # interface change also starts gecko.yml, which builds the branch in full and
+            # runs the same smoke test.
+            echo "::notice::no gecko run with a Linux package on $GITHUB_REF_NAME yet: nothing to repack, skipping the quick smoke test (and the canary)"
+            echo "Skipped: no gecko run with a Linux package on \`$GITHUB_REF_NAME\` yet." >> "$GITHUB_STEP_SUMMARY"
+            echo "run_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "Using the Linux package of gecko run $run_id"
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.source.outputs.run_id != ''
         with:
           name: whisper-${{ env.FIREFOX_VERSION }}-linux-x86_64
           path: dist
           run-id: ${{ steps.source.outputs.run_id }}
           github-token: ${{ github.token }}
       - name: What the browser needs to run, plus Xvfb, ImageMagick and xdotool
+        if: steps.source.outputs.run_id != ''
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends xvfb imagemagick xdotool \
             libgtk-3-0t64 libasound2t64 libx11-xcb1 libdbus-glib-1-2 libxtst6 libpci3
       - name: Unpack and replace the interface files
+        if: steps.source.outputs.run_id != ''
         run: |
           (cd dist && sha256sum -c SHA256SUMS)
           mkdir -p "$RUNNER_TEMP/app"
           tar -xJf dist/whisper-*.linux-x86_64.tar.xz -C "$RUNNER_TEMP/app"
           python3 gecko/scripts/repack-ui.py "$RUNNER_TEMP/app/whisper"
       - name: Let the browser's sandbox use user namespaces
+        if: steps.source.outputs.run_id != ''
         run: |
           # Ubuntu 24.04 blocks unprivileged user namespaces through AppArmor; Firefox's
           # content sandbox needs them (on a desktop the browser's AppArmor profile
           # allows it). Without this the sandbox runs weakened and content processes die.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Smoke test
+        if: steps.source.outputs.run_id != ''
         run: |
           gecko/scripts/smoke/run-smoke.sh "$RUNNER_TEMP/app/whisper" \
             gecko/overlay/browser/components/whisper/0-whisper.js "$RUNNER_TEMP/smoke" "$FIREFOX_VERSION"
       - name: Summary
-        if: always()
+        if: always() && steps.source.outputs.run_id != ''
         run: |
           {
             echo "## Smoke test with this commit's interface files"
@@ -112,7 +131,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: always() && steps.source.outputs.run_id != ''
         with:
           name: smoke-linux-quick
           path: ${{ runner.temp }}/smoke/
@@ -125,8 +144,8 @@ jobs:
     # start: the repack had made omni.ja readable for its owner only. The repack now
     # keeps every jar as mach package writes it, and the exact tarball is started
     # before and after publishing; run 42298972783 proved it, including that the check
-    # refuses such an omni.ja.)
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # refuses such an omni.ja.) Not when the smoke job had no package to test.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.smoke.outputs.run_id != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: canary

@@ -265,8 +265,9 @@ jobs:
     name: Update host
     needs: [check, publish]
     if: needs.check.outputs.publish == 'true'
-    # Built from the newest release (this one) and Whisper Canary, so the canary's
-    # update.xml stays on the host (pages.yml).
+    # Built from the newest release (this one) and Whisper Canary when its turn in the
+    # one-deploy-at-a-time queue comes, so the canary's update.xml stays on the host and
+    # a canary deploy at the same time cannot put an older site back (pages.yml).
     permissions:
       contents: read
       pages: write
