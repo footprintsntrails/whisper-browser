@@ -1,0 +1,77 @@
+Whisper: build the clipguard component and link its Rust into libxul
+
+What: adds toolkit/components/clipguard to the component build, the clipguard_ffi crate
+to gkrust-shared (so its C ABI is linked into libxul and kept by the linker), and the
+clipguard and clipguard_ffi entries to Cargo.lock.
+Why: the ClickFix decision logic is the clipguard Rust crate (new files under
+gecko/overlay/toolkit/components/clipguard/rust and ffi). It reaches C++ through
+gkrust-shared and cbindgen, the same way gkrust_utils and the DAP telemetry crate do.
+Only crates Firefox already vendors are used (aho-corasick, memchr, regex, toml,
+thin-vec, nsstring), so no new sources are vendored.
+---
+--- a/toolkit/components/moz.build
++++ b/toolkit/components/moz.build
+@@ -28,6 +28,7 @@
+     "certviewer",
+     "cleardata",
+     "clearsitedata",
++    "clipguard",
+     "commandlines",
+     "content-classifier",
+     "content-classifier/content_classifier_engine",
+--- a/toolkit/library/rust/shared/Cargo.toml
++++ b/toolkit/library/rust/shared/Cargo.toml
+@@ -43,6 +43,7 @@
+ jsrust_shared = { path = "../../../../js/src/rust/shared" }
+ jxl_decoder = { path = "../../../../image/rust/jxl", optional = true }
+ cascade_bloom_filter = { path = "../../../components/cascade_bloom_filter" }
++clipguard_ffi = { path = "../../../components/clipguard/ffi" }
+ bitsdownload = { path = "../../../components/bitsdownload", optional = true }
+ storage = { path = "../../../../storage/rust" }
+ bookmark_sync = { path = "../../../components/places/bookmark_sync", optional = true }
+--- a/toolkit/library/rust/shared/lib.rs
++++ b/toolkit/library/rust/shared/lib.rs
+@@ -18,6 +18,7 @@
+ extern crate buildid_reader_ffi;
+ extern crate cascade_bloom_filter;
+ extern crate cert_storage;
++extern crate clipguard_ffi;
+ extern crate chardetng_c;
+ extern crate cosec;
+ extern crate crypto_hash;
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1046,6 +1046,25 @@
+ checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
+ 
+ [[package]]
++name = "clipguard"
++version = "0.1.0"
++dependencies = [
++ "aho-corasick",
++ "memchr",
++ "regex",
++ "toml 1.1.5+spec-1.1.0",
++]
++
++[[package]]
++name = "clipguard_ffi"
++version = "0.1.0"
++dependencies = [
++ "clipguard",
++ "nsstring",
++ "thin-vec",
++]
++
++[[package]]
+ name = "clubcard"
+ version = "0.3.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3008,6 +3027,7 @@
+  "cascade_bloom_filter",
+  "cert_storage",
+  "chardetng_c",
++ "clipguard_ffi",
+  "content_classifier_engine",
+  "cose-c",
+  "crash_helper_client",

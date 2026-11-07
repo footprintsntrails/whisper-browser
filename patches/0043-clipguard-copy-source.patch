@@ -1,0 +1,132 @@
+Whisper: label who put text on the clipboard, for ClickFix protection
+
+What: carries a one-byte "who wrote this" label (mozilla::ClipguardSource) from the
+content process to the parent, on nsITransferable and as a field of IPCTransferable (not
+as a clipboard flavor, so it never reaches the native clipboard). nsCopySupport sets it:
+the person's own Ctrl+C, a page copy/cut handler that replaced the data, or a script's
+execCommand (including copying a hidden textarea). A one-line Document getter exposes
+whether a page script's execCommand is running.
+Why: the parent must tell the person's own copy (never blocked) from a script's write.
+An unlabelled content write (for example navigator.clipboard) stays unlabelled and is
+treated as a script, which is the safe default.
+---
+--- a/dom/base/Document.h
++++ b/dom/base/Document.h
+@@ -4087,6 +4087,11 @@
+         aHasPolicyWithRequireTrustedTypesForDirective;
+   }
+   bool IsClipboardCopyTriggered() const { return mClipboardCopyTriggered; }
++  // Whisper: whether a page script's execCommand() is running now, so nsCopySupport can
++  // tell a scripted copy from the person's own Ctrl+C (ClickFix protection).
++  bool IsRunningExecCommandByContent() const {
++    return mIsRunningExecCommandByContent;
++  }
+   void ClearClipboardCopyTriggered() { mClipboardCopyTriggered = false; }
+   void SetClipboardCopyTriggered() { mClipboardCopyTriggered = true; }
+ 
+--- a/dom/base/nsCopySupport.cpp
++++ b/dom/base/nsCopySupport.cpp
+@@ -57,6 +57,7 @@
+ #include "mozilla/PresShell.h"
+ #include "mozilla/TextEditor.h"
+ #include "mozilla/dom/Element.h"
++#include "mozilla/ClipboardGuardSource.h"
+ #include "mozilla/dom/HTMLInputElement.h"
+ #include "mozilla/dom/Selection.h"
+ 
+@@ -248,6 +249,11 @@
+ 
+   aTransferable->Init(aDocument.GetLoadContext());
+   aTransferable->SetDataPrincipal(aDocument.NodePrincipal());
++  // Whisper ClickFix: a copy with no page handler is the person's own, unless a page
++  // script's execCommand is driving it (including copying a hidden textarea).
++  aTransferable->SetWhisperCopySource(static_cast<uint8_t>(
++      aDocument.IsRunningExecCommandByContent() ? ClipguardSource::ExecCommand
++                                                : ClipguardSource::UserCopy));
+   if (aEncodedDocumentWithContext.mCanBeEncodedAsTextHTML) {
+     // XXX: Now we provide the text/plain directly, do we still need to always
+     // set a HTML converter? Or perhaps we could set the converter only when the
+@@ -969,6 +975,13 @@
+ 
+       NS_ENSURE_TRUE(transferable, false);
+ 
++      // Whisper ClickFix: the page's handler put this on the clipboard instead of the
++      // selection. Label it so the parent can check it (a page script's execCommand
++      // that replaces data is still a script write).
++      transferable->SetWhisperCopySource(static_cast<uint8_t>(
++          doc->IsRunningExecCommandByContent() ? ClipguardSource::ExecCommand
++                                               : ClipguardSource::PageReplacedCopy));
++
+       if (NS_FAILED(
+               AppendSourceURL(*transferable, GetDocumentSourceURL(*doc)))) {
+         return false;
+--- a/dom/ipc/IPCTransferable.ipdlh
++++ b/dom/ipc/IPCTransferable.ipdlh
+@@ -82,6 +82,8 @@
+   CookieJarSettingsArgs? cookieJarSettings;
+   nsContentPolicyType contentPolicyType;
+   nullable nsIReferrerInfo referrerInfo;
++  // Whisper: who wrote it, for ClickFix protection (mozilla::ClipguardSource).
++  uint8_t whisperCopySource;
+ };
+ 
+ } // namespace dom
+--- a/widget/nsITransferable.idl
++++ b/widget/nsITransferable.idl
+@@ -226,4 +226,12 @@
+    * Used for initializing the referrer when downloading a file promise.
+    */
+   [notxpcom, nostdcall] attribute nsIReferrerInfo referrerInfo;
++
++  /**
++   * Whisper: who put this on the clipboard, for ClickFix protection
++   * (mozilla::ClipguardSource; 0 when unlabelled). Set in the content process by
++   * nsCopySupport and carried to the parent on IPCTransferable, never onto the native
++   * clipboard. The parent reads it in toolkit/components/clipguard.
++   */
++  [notxpcom, nostdcall] attribute uint8_t whisperCopySource;
+ };
+--- a/widget/nsTransferable.h
++++ b/widget/nsTransferable.h
+@@ -82,6 +82,7 @@
+   nsContentPolicyType mContentPolicyType;
+   nsCOMPtr<nsICookieJarSettings> mCookieJarSettings;
+   nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
++  uint8_t mWhisperCopySource = 0;  // mozilla::ClipguardSource (Whisper ClickFix)
+ #if DEBUG
+   bool mInitialized;
+ #endif
+--- a/widget/nsTransferable.cpp
++++ b/widget/nsTransferable.cpp
+@@ -537,6 +537,12 @@
+   mContentPolicyType = aContentPolicyType;
+ }
+ 
++uint8_t nsTransferable::GetWhisperCopySource() { return mWhisperCopySource; }
++
++void nsTransferable::SetWhisperCopySource(uint8_t aSource) {
++  mWhisperCopySource = aSource;
++}
++
+ nsICookieJarSettings* nsTransferable::GetCookieJarSettings() {
+   MOZ_ASSERT(mInitialized);
+ 
+--- a/dom/base/nsContentUtils.cpp
++++ b/dom/base/nsContentUtils.cpp
+@@ -9886,6 +9886,8 @@
+   aTransferable->SetReferrerInfo(aIPCTransferable.referrerInfo());
+   aTransferable->SetDataPrincipal(aIPCTransferable.dataPrincipal());
+   aTransferable->SetContentPolicyType(aIPCTransferable.contentPolicyType());
++  // Whisper: the ClickFix copy-source label (never a clipboard flavor).
++  aTransferable->SetWhisperCopySource(aIPCTransferable.whisperCopySource());
+ 
+   return NS_OK;
+ }
+@@ -10220,6 +10222,7 @@
+   aIPCTransferable->cookieJarSettings() = std::move(cookieJarSettingsArgs);
+   aIPCTransferable->contentPolicyType() = aTransferable->GetContentPolicyType();
+   aIPCTransferable->referrerInfo() = aTransferable->GetReferrerInfo();
++  aIPCTransferable->whisperCopySource() = aTransferable->GetWhisperCopySource();
+ }
+ 
+ Maybe<BigBuffer> nsContentUtils::GetSurfaceData(DataSourceSurface& aSurface,

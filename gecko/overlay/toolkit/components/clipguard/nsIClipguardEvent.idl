@@ -1,0 +1,89 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+interface nsIPrincipal;
+webidl WindowGlobalParent;
+
+/**
+ * Whisper's ClickFix protection: what happened to a clipboard write from a page.
+ *
+ * nsBaseClipboard (toolkit/components/clipguard/ClipboardGuard.cpp) decides, with the
+ * clipguard Rust crate, what to do with a write, and tells the browser's interface by
+ * notifying observers of "clipguard-event" with an object of this interface as the
+ * subject (browser/components/whisper/WhisperClipguard.sys.mjs). The page never sees
+ * any of this: its write "succeeds" in every case.
+ *
+ * The clipboard text itself is not exposed. The interface gets a display string built
+ * by Rust (first 400 characters, hidden characters made visible) and the hosts in it.
+ * The text is held in memory for at most 60 seconds, never written to disk.
+ */
+[scriptable, builtinclass, uuid(5d8b1f4e-7c2a-4e9b-9a61-3c0f2b7d4e15)]
+interface nsIClipguardEvent : nsISupports
+{
+  /** The write is held; call resolveVisibility() with the page's visible text. */
+  const unsigned long KIND_CHECK_VISIBILITY = 1;
+  /** The clipboard now holds the placeholder instead of the page's text. */
+  const unsigned long KIND_BLOCKED = 2;
+  /** The page's text was written; show `notice`. */
+  const unsigned long KIND_NOTICE = 3;
+
+  /** No notice. */
+  const unsigned long NOTICE_NONE = 0;
+  /** LOW: an icon in the address bar. */
+  const unsigned long NOTICE_INDICATOR = 1;
+  /** MED, on screen, unknown host: downloads and runs a script from {host}. */
+  const unsigned long NOTICE_INSTALLER = 2;
+  /** HIGH on screen, or a HIGH command the person copied themselves. */
+  const unsigned long NOTICE_COMMAND_WARNING = 3;
+  /** The page's copy handler replaced what the person selected. */
+  const unsigned long NOTICE_SUBSTITUTED = 4;
+  /** clipguard.mode is "warn": this would have been blocked. */
+  const unsigned long NOTICE_WARNED = 5;
+
+  readonly attribute unsigned long kind;
+  readonly attribute unsigned long notice;
+
+  /** clipguard::Level: 1 LOW, 2 MED, 3 HIGH, 4 CRITICAL. */
+  readonly attribute unsigned long level;
+  /** Who wrote it: 1 the person, 2 a copy handler, 3 execCommand, 4 navigator.clipboard, 5 unlabelled. */
+  readonly attribute unsigned long source;
+  /** clipguard::Reason bits. */
+  readonly attribute unsigned long reasons;
+
+  /** What the page tried to copy, safe to show (see clipguard::display_text). */
+  readonly attribute AString displayText;
+  /** The hosts in the command, separated by ", ". */
+  readonly attribute ACString hosts;
+
+  /** The principal of the page that wrote, if known. */
+  readonly attribute nsIPrincipal principal;
+  /** The window that wrote, or null if it is gone. */
+  readonly attribute WindowGlobalParent windowGlobal;
+
+  /** For KIND_CHECK_VISIBILITY: what to look for on the page. */
+  readonly attribute Array<AString> visibilityProbes;
+
+  /**
+   * For KIND_CHECK_VISIBILITY: the text of the page's visible elements that contain
+   * a probe (empty if none or the page could not be checked). The browser decides and
+   * either writes the page's text or blocks it; a new event follows when there is
+   * something to show. Calling it twice, or after the write was superseded, does
+   * nothing.
+   */
+  void resolveVisibility(in Array<AString> aVisibleTexts);
+
+  /** For KIND_BLOCKED: whether the page's text is still held (60 seconds). */
+  readonly attribute boolean canCopyAnyway;
+
+  /**
+   * For KIND_BLOCKED: put the page's text (without a line break at its end) on the
+   * clipboard after all. Returns false if it is no longer held.
+   */
+  boolean copyAnyway();
+
+  /** Drops the held text now ("Keep blocked"). */
+  void discard();
+};

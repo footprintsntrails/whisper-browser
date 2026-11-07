@@ -1,0 +1,43 @@
+Whisper: ClickFix protection preferences (clipguard.*)
+
+What: adds the clipguard.mode (block/warn/off), clipguard.user_copy_notice and
+clipguard.strict_script_copy static preferences.
+Why: these control Whisper's ClickFix protection. They are static prefs so the C++ in
+widget/ and toolkit/components/clipguard can read them cheaply on every clipboard write.
+The behaviour itself is off unless the clipguard component is built (patches 0041-0043);
+clipguard.mode defaults to block.
+---
+--- a/modules/libpref/init/StaticPrefList.yaml
++++ b/modules/libpref/init/StaticPrefList.yaml
+@@ -2438,6 +2438,31 @@
+   mirror: always
+ 
+ #---------------------------------------------------------------------------
++# Prefs starting with "clipguard." (Whisper's ClickFix protection)
++#---------------------------------------------------------------------------
++
++# What to do when a page puts a command on the clipboard that the person did not
++# select and that is not on screen: 0 block (default), 1 warn but copy, 2 off.
++- name: clipguard.mode
++  type: uint32_t
++  value: 0
++  mirror: always
++
++# Show a one-time notice in the address bar when the person copies a command that
++# looks like one used to install malware (their own Ctrl+C, so never blocked).
++- name: clipguard.user_copy_notice
++  type: bool
++  value: true
++  mirror: always
++
++# Ask about every command a script writes, not only those that are not on screen.
++# Off by default: it would prompt on ordinary documentation copy buttons.
++- name: clipguard.strict_script_copy
++  type: bool
++  value: false
++  mirror: always
++
++#---------------------------------------------------------------------------
+ # Prefs starting with "consoleservice."
+ #---------------------------------------------------------------------------
+ 

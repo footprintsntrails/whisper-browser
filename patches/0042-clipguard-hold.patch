@@ -1,0 +1,68 @@
+Whisper: hold and check content clipboard writes in nsBaseClipboard
+
+What: nsBaseClipboard::SetDataImpl, the one place every content clipboard write passes in
+the parent process, calls mozilla::ClipboardGuard::Guard() for the first
+(content-initiated) pass. The guard (new files in toolkit/components/clipguard) classifies
+the text with the clipguard Rust crate and either lets the write through, removes a
+trailing line break, or replaces it with a harmless placeholder while holding the real
+text for "Copy anyway". nsBaseClipboard grants the guard and its event object friendship
+so they can commit a held write through the existing SetDataImpl(aCheckContentAnalysis =
+false) path, the same primitive content analysis uses.
+Why: the hold/placeholder/false-success machinery reuses PendingCopy, present since
+Firefox 158. The page never learns the decision: its write always succeeds. The file was
+last changed in September 2026 (bug 2057113, bug 2067877); keep this patch small so an
+engine update rebases cleanly.
+---
+--- a/widget/nsBaseClipboard.h
++++ b/widget/nsBaseClipboard.h
+@@ -29,11 +29,21 @@
+ class WindowContext;
+ }  // namespace mozilla::dom
+ 
++namespace mozilla {
++// Whisper's ClickFix protection calls the private SetDataImpl to commit a held copy or
++// the blocked-copy placeholder (toolkit/components/clipguard).
++class ClipboardGuard;
++class ClipguardEvent;
++}  // namespace mozilla
++
+ /**
+  * A base clipboard class for all platform, so that they can share the same
+  * implementation.
+  */
+ class nsBaseClipboard : public nsIClipboard {
++  friend class mozilla::ClipboardGuard;
++  friend class mozilla::ClipguardEvent;
++
+  public:
+   explicit nsBaseClipboard(
+       const mozilla::dom::ClipboardCapabilities& aClipboardCaps);
+--- a/widget/nsBaseClipboard.cpp
++++ b/widget/nsBaseClipboard.cpp
+@@ -5,6 +5,7 @@
+ #include "nsBaseClipboard.h"
+ 
+ #include "ContentAnalysis.h"
++#include "mozilla/ClipboardGuard.h"
+ #include "mozilla/AutoRestore.h"
+ #include "mozilla/Components.h"
+ #include "mozilla/ErrorResult.h"
+@@ -557,6 +558,18 @@
+   // verdict for it.
+   CancelPendingCopy(aWhichClipboard, NS_ERROR_ABORT);
+ 
++  // Whisper's ClickFix protection. Only the first, content-initiated pass is checked
++  // (aCheckContentAnalysis is true); the internal commit that writes an allowed copy
++  // and the blocked-copy placeholder pass false and skip it, as content analysis does.
++  // When the guard handles the write it has already run aCompletion and put either the
++  // page's text or the placeholder on the clipboard, so there is nothing more to do.
++  if (aCheckContentAnalysis && mozilla::ClipboardGuard::IsEnabled() &&
++      mozilla::ClipboardGuard::Guard(this, aTransferable, aOwner, aWhichClipboard,
++                                     aWindowContext, aCompletion) ==
++          mozilla::ClipboardGuard::Result::Handled) {
++    return NS_OK;
++  }
++
+   // Ask Content Analysis whether web content is permitted to copy this data.
+   // The check is asynchronous on this (the parent's main) thread, as the agent
+   // may be slow, so the clipboard is left as it was until the verdict arrives.
