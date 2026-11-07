@@ -31,8 +31,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WhisperSettings:
     "moz-src:///browser/components/whisper/WhisperSettings.sys.mjs",
   WhisperSidebar: "moz-src:///browser/components/whisper/WhisperSidebar.sys.mjs",
-  WhisperTabIcons:
-    "moz-src:///browser/components/whisper/WhisperTabIcons.sys.mjs",
   WhisperToolbar: "moz-src:///browser/components/whisper/WhisperToolbar.sys.mjs",
   WhisperUrlbar: "moz-src:///browser/components/whisper/WhisperUrlbar.sys.mjs",
 });
@@ -97,7 +95,6 @@ export const WhisperUI = {
   onWindowDelayedStartup(win) {
     guarded("sidebar modes", () => lazy.WhisperSidebar.initWindow(win));
     guarded("address bar results", () => lazy.WhisperUrlbar.initWindow(win));
-    guarded("tab icons", () => lazy.WhisperTabIcons.initWindow(win));
     if (!this._uboSetupStarted) {
       this._uboSetupStarted = true;
       guarded("uBlock Origin first run", () => this._setUpUBlockOrigin());
@@ -112,7 +109,6 @@ export const WhisperUI = {
     guarded("address bar results cleanup", () =>
       lazy.WhisperUrlbar.uninitWindow(win)
     );
-    guarded("tab icons cleanup", () => lazy.WhisperTabIcons.uninitWindow(win));
   },
 
   /**

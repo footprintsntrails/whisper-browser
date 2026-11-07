@@ -364,29 +364,24 @@ return {
 """
 
 TAB_ICONS_JS = r"""
-// Tab rows and icons in the sidebar (cast.css, WhisperTabIcons.sys.mjs): rows 30 px
-// tall and a few pixels apart, a monogram for a page without an icon (a tab that is
-// not loaded, so nothing is looked up), Firefox's globe for an address without a
-// domain, and a ring while a page loads, never a dot.
+// Tab rows and icons in the sidebar (cast.css): rows 30 px tall and a few pixels
+// apart; a page without an icon shows Firefox's globe in muted platinum (a tab that is
+// not loaded, so nothing is looked up); a ring while a page loads, never a dot.
 const sleep = ms => new Promise(res => setTimeout(res, ms));
-const { monogramFor } = ChromeUtils.importESModule("moz-src:///browser/components/whisper/WhisperTabIcons.sys.mjs");
 const lazyTab = gBrowser.addTrustedTab("https://en.wikipedia.org/wiki/Web_browser", { createLazyBrowser: true });
-const ipTab = gBrowser.addTrustedTab("http://192.0.2.1/", { createLazyBrowser: true });
 await sleep(800);
 const rows = gBrowser.visibleTabs.filter(t => !t.pinned).map(t => t.querySelector(".tab-background").getBoundingClientRect());
 const pitches = rows.slice(1).map((r, i) => Math.round(r.top - rows[i].top));
-const stack = lazyTab.querySelector(".tab-icon-stack");
-const mono = getComputedStyle(stack, "::before");
+const icon = lazyTab.querySelector(".tab-icon-image");
+const style = getComputedStyle(icon);
 const out = {
   rowHeights: [...new Set(gBrowser.visibleTabs.filter(t => !t.pinned).map(t => Math.round(t.querySelector(".tab-background").getBoundingClientRect().height)))],
   pitches: [...new Set(pitches)],
-  monogram: lazyTab.getAttribute("whisper-mono"),
-  monogramContent: mono.content,
-  monogramSize: [mono.width, mono.height],
-  iconHidden: getComputedStyle(lazyTab.querySelector(".tab-icon-image")).visibility == "hidden",
-  ipMonogram: ipTab.getAttribute("whisper-mono"),
-  ipIcon: getComputedStyle(ipTab.querySelector(".tab-icon-image")).content,
-  helper: [monogramFor("https://news.ycombinator.com/"), monogramFor("http://127.0.0.1:8080/"), monogramFor("about:blank")],
+  globe: style.content,
+  globeShown: style.visibility == "visible" && style.display != "none",
+  globeSize: [Math.round(icon.getBoundingClientRect().width), Math.round(icon.getBoundingClientRect().height)],
+  globeFill: style.fill,
+  muted: getComputedStyle(document.documentElement).getPropertyValue("--w-muted").trim(),
 };
 lazyTab.setAttribute("busy", "true");
 await sleep(200);
@@ -394,7 +389,6 @@ const ring = getComputedStyle(lazyTab.querySelector(".tab-throbber"), "::before"
 out.loading = { background: ring.backgroundImage, radius: ring.borderTopLeftRadius, animation: ring.animationName };
 lazyTab.removeAttribute("busy");
 gBrowser.removeTab(lazyTab);
-gBrowser.removeTab(ipTab);
 return out;
 """
 
@@ -522,7 +516,7 @@ NEWTAB_JS = r"""
 // Whisper's new tab page (WhisperNewTab.sys.mjs, content/newtab/): a new tab opens it
 // without a single network request, with the address bar focused and empty, the
 // Whisper mark, the search field and the user's pinned sites (a site without an icon
-// shows its monogram).
+// shows Firefox's globe).
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 const { NewTabUtils } = ChromeUtils.importESModule("resource://gre/modules/NewTabUtils.sys.mjs");
 const seen = [];
@@ -551,7 +545,7 @@ const out = {
   wordmark: doc?.getElementById("wordmark")?.textContent ?? null,
   search: !!doc?.getElementById("search"),
   sites: [...(doc?.querySelectorAll("#sites .site:not(.site-add) .site-name") ?? [])].map(e => e.textContent),
-  monogram: doc?.querySelector("#sites .site-mono")?.textContent ?? null,
+  globe: doc?.querySelector("#sites .site-globe")?.getAttribute("src") ?? null,
   addTile: !!doc?.querySelector("#sites .site-add"),
 };
 NewTabUtils.pinnedLinks.unpin({ url: "https://en.wikipedia.org/" });
@@ -966,12 +960,10 @@ def main():
         report.facts["tab_icons"] = icons
         report.check("sidebar tab rows are 30 px tall and 2 to 4 px apart",
                      icons["rowHeights"] == [30] and all(32 <= p <= 34 for p in icons["pitches"]), icons)
-        report.check("a page without an icon shows its domain's monogram (W for wikipedia.org); "
-                     "an IP address keeps Firefox's globe",
-                     icons["monogram"] == "W" and icons["monogramContent"] == '"W"' and icons["iconHidden"]
-                     and icons["ipMonogram"] is None and "defaultFavicon" in (icons["ipIcon"] or "")
-                     and icons["helper"][0]["letter"] == "Y" and icons["helper"][1] is None
-                     and icons["helper"][2] is None, icons)
+        report.check("a page without an icon shows Firefox's globe, 16 px, in muted platinum",
+                     "defaultFavicon" in (icons["globe"] or "") and icons["globeShown"]
+                     and icons["globeSize"] == [16, 16] and icons["globeFill"] == "rgb(142, 152, 163)"
+                     and icons["muted"] == "#8e98a3", icons)
         report.check("a loading tab shows a ring, not Firefox's sliding dot",
                      icons["loading"]["background"] == "none" and icons["loading"]["radius"] == "50%"
                      and icons["loading"]["animation"] == "whisper-tab-loading", icons["loading"])
@@ -998,9 +990,10 @@ def main():
                      newtab["opened"] == 1 and newtab["url"] == newtab_url and newtab["newTabURL"] == newtab_url
                      and newtab["homepage"] == newtab_url and not newtab["requests"], newtab)
         report.check("the new tab page has the address bar focused and empty, the Whisper mark, the search "
-                     "field and the pinned sites (a monogram for a site without an icon)",
+                     "field and the pinned sites (the globe for a site without an icon)",
                      newtab["urlbarFocused"] and newtab["urlbarValue"] == "" and newtab["wordmark"] == "Whisper"
-                     and newtab["search"] and newtab["sites"] == ["Wikipedia"] and newtab["monogram"] == "W"
+                     and newtab["search"] and newtab["sites"] == ["Wikipedia"]
+                     and newtab["globe"] == "chrome://global/skin/icons/defaultFavicon.svg"
                      and newtab["addTile"], newtab)
         search = m.run(SEARCH_JS)
         report.facts["search"] = search

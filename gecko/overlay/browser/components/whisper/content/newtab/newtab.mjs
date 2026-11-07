@@ -13,9 +13,6 @@ const { NewTabUtils } = ChromeUtils.importESModule(
 const { WhisperLayout } = ChromeUtils.importESModule(
   "moz-src:///browser/components/whisper/WhisperLayout.sys.mjs"
 );
-const { monogramFor } = ChromeUtils.importESModule(
-  "moz-src:///browser/components/whisper/WhisperTabIcons.sys.mjs"
-);
 const { PlacesUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PlacesUtils.sys.mjs"
 );
@@ -113,10 +110,11 @@ function siteItem(link, index) {
   return item;
 }
 
+const GLOBE = "chrome://global/skin/icons/defaultFavicon.svg";
+
 /**
- * The site's icon from the browser's icon cache, or, for a site without one, the
- * same monogram its tabs show (WhisperTabIcons.sys.mjs); Firefox's globe when the
- * address has no domain.
+ * The site's icon from the browser's icon cache, or, for a site without one, Firefox's
+ * globe in muted platinum, as on its tabs.
  */
 async function fillTile(tile, url) {
   let known = false;
@@ -125,19 +123,15 @@ async function fillTile(tile, url) {
       Services.io.newURI(url)
     ));
   } catch (e) {}
-  const mono = known ? null : monogramFor(url);
-  if (mono) {
-    const letter = document.createElement("span");
-    letter.className = "site-mono";
-    letter.textContent = mono.letter;
-    letter.style.setProperty("--hue", String(mono.hue));
-    tile.append(letter);
-    return;
-  }
   const icon = document.createElement("img");
-  icon.className = "site-icon";
   icon.alt = "";
-  icon.src = `page-icon:${url}`;
+  if (known) {
+    icon.className = "site-icon";
+    icon.src = `page-icon:${url}`;
+  } else {
+    icon.className = "site-icon site-globe";
+    icon.src = GLOBE;
+  }
   tile.append(icon);
 }
 

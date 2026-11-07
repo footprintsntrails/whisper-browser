@@ -48,22 +48,6 @@ WhisperLayout.setSpaceColor(win, "#2a2340"); // null goes back to Cast black
 // notifies listeners with changedKeys ["spaceColor"] and the window
 ```
 
-## Monograms: `WhisperTabIcons.sys.mjs`
-
-A page without an icon gets a monogram instead of Firefox's globe: the first letter of
-its registrable domain on a tile whose muted hue comes from the domain, so a site looks
-the same in every tab and on the new tab page. Addresses without a domain (an IP
-address, a file, a browser page) keep the globe. The pref `whisper.tabs.monograms`
-turns them off.
-
-```js
-monogramFor("https://news.ycombinator.com/"); // { letter: "Y", hue: 253, domain: "ycombinator.com" }
-monogramFor("http://127.0.0.1:8080/");       // null
-```
-
-Tabs carry the attribute `whisper-mono` (the letter) and the custom properties
-`--whisper-mono` and `--whisper-mono-hue`; `cast.css` draws the 16 px tile.
-
 ## Rules for code here
 
 - Only events and public APIs of Firefox; no replacing Firefox methods at runtime. Where

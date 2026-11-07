@@ -231,37 +231,20 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   }
 }
 
-/* ===== Tab icons (WhisperTabIcons.sys.mjs) ============================================
- * A page without an icon shows a monogram where Firefox shows its globe: the first
- * letter of the site's domain on a 16 px tile in a muted colour of its own (the tab
- * carries the letter and the hue). While a page loads, a thin ring turns in the same
- * place instead of Firefox's sliding dot, in both layouts.
+/* ===== Tab icons ======================================================================
+ * A page without an icon shows Firefox's globe in muted platinum, in the same 16 px
+ * icon column in both layouts (Firefox leaves it out of horizontal tabs), and so do
+ * the address bar's results. While a page loads, a thin ring turns in the same place
+ * instead of Firefox's sliding dot.
  */
-.tabbrowser-tab[whisper-mono]:not([image], [busy], [crashed], [sharing], [pictureinpicture]) {
-  .tab-icon-image {
-    visibility: hidden !important;
-  }
-
-  /* Firefox hides an icon-less tab's icon in the horizontal strip; the tile takes its
-   * place and its spacing. */
-  #tabbrowser-tabs[orient="horizontal"] &:not([pinned]) .tab-icon-stack::before {
-    margin-inline-end: var(--tab-icon-margin-inline-end);
-  }
-
-  .tab-icon-stack::before {
-    content: var(--whisper-mono);
-    grid-area: 1 / 1;
-    justify-self: start;
-    align-self: center;
-    inline-size: var(--w-tab-icon);
-    block-size: var(--w-tab-icon);
-    border-radius: 4px;
-    background-color: oklch(40% 0.045 var(--whisper-mono-hue));
-    color: #e6eaee;
-    font: 500 10px/var(--w-tab-icon) "Whisper Inter", sans-serif;
-    text-align: center;
-    pointer-events: none;
-  }
+.tab-icon-image:not([src]) {
+  fill: var(--w-muted) !important;
+}
+#tabbrowser-tabs[orient="horizontal"] .tab-icon-image:not([src], [pinned], [crashed], [sharing], [pictureinpicture], [busy]) {
+  display: revert !important;
+}
+.urlbarView-favicon[src="chrome://global/skin/icons/defaultFavicon.svg"] {
+  fill: var(--w-muted) !important;
 }
 
 @media (prefers-reduced-motion: no-preference) {

@@ -152,17 +152,12 @@ body {
   inline-size: 24px;
   block-size: 24px;
 }
-/* A site without an icon: its monogram, as on its tabs, at tile size */
-.site-mono {
-  inline-size: 28px;
-  block-size: 28px;
-  border-radius: 8px;
-  background: oklch(40% 0.045 var(--hue));
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 28px;
-  text-align: center;
+/* A site without an icon: Firefox's globe in muted platinum, as on its tabs */
+.site-globe {
+  inline-size: 22px;
+  block-size: 22px;
+  -moz-context-properties: fill;
+  fill: var(--muted);
 }
 .site-name {
   font-size: 11px;

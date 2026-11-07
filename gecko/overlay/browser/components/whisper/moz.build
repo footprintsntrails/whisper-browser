@@ -16,7 +16,6 @@
 #   WhisperLoginCrypto.sys.mjs  reads their saved passwords (their own key4.db)
 #   WhisperSettings.sys.mjs the Whisper pane of Settings (content/settings/)
 #   WhisperSidebar.sys.mjs  the three tab sidebar modes
-#   WhisperTabIcons.sys.mjs monograms for pages without an icon (tabs, new tab page)
 #   WhisperToolbar.sys.mjs  the slim toolbar row, set once per profile
 #   WhisperUrlbar.sys.mjs   labels for the address bar's results panel
 #   content/                the Cast stylesheets and the Inter font
@@ -43,7 +42,6 @@ MOZ_SRC_FILES += [
     "WhisperNewTab.sys.mjs",
     "WhisperSettings.sys.mjs",
     "WhisperSidebar.sys.mjs",
-    "WhisperTabIcons.sys.mjs",
     "WhisperToolbar.sys.mjs",
     "WhisperUI.sys.mjs",
     "WhisperUrlbar.sys.mjs",
