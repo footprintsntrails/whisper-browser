@@ -90,6 +90,15 @@ pref("browser.search.suggest.enabled", false);
 pref("browser.urlbar.suggest.quicksuggest.nonsponsored", false);
 pref("browser.urlbar.quicksuggest.enabled", false);
 pref("browser.urlbar.trending.featureGate", false);
+// Whisper's results panel (cast.css, WhisperUrlbar.sys.mjs): at most 8 rows, grouped,
+// with the search engines as a row of chips at the bottom (Tab moves between them).
+// Firefox 159's "scotch bonnet" bundle replaces those chips with a search button inside
+// the field; the parts of it Whisper keeps are turned on one by one.
+pref("browser.urlbar.maxRichResults", 8);
+pref("browser.urlbar.scotchBonnet.enableOverride", false);
+pref("browser.urlbar.trimHttps", true);
+pref("browser.urlbar.untrimOnUserInteraction.featureGate", true);
+pref("browser.urlbar.searchRestrictKeywords.featureGate", true);
 
 // --- AI features: blocked by default (Settings > AI controls turns them back on) ----
 // Translations stay available: they run on this device and only download a language

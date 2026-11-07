@@ -13,6 +13,7 @@ browser.jar:
     content/whisper/cast.css                    (content/cast.css)
     content/whisper/cast-pages.css              (content/cast-pages.css)
     content/whisper/aboutDialog.css             (content/aboutDialog.css)
+    content/whisper/grain.png                   (content/grain.png)
     content/whisper/fonts/Inter-Regular.woff2   (content/fonts/Inter-Regular.woff2)
     content/whisper/fonts/Inter-Medium.woff2    (content/fonts/Inter-Medium.woff2)
     content/whisper/fonts/Inter-SemiBold.woff2  (content/fonts/Inter-SemiBold.woff2)

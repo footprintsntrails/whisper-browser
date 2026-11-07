@@ -542,3 +542,28 @@ fn bmp24(pixmap: &tiny_skia::Pixmap) -> Vec<u8> {
     }
     out
 }
+
+/// The cast-metal grain (concept, section 5): a 128 px tile of soft monochrome noise with
+/// a little alpha, drawn over the window background and the new tab page at low
+/// opacity. Seeded, so the file only changes when this code does.
+pub fn grain() -> Result<(), String> {
+    const SIZE: u32 = 128;
+    let mut pixmap = tiny_skia::Pixmap::new(SIZE, SIZE).ok_or("bad size")?;
+    let mut state: u32 = 0x5717_5e7d;
+    for pixel in pixmap.pixels_mut() {
+        // xorshift32
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        let shade = (state >> 24) as u8;
+        let alpha = 2 + (state >> 8 & 0x7) as u8; // 2..9 of 255: about 2 % on average
+        // Premultiplied: a light or dark speck, faint.
+        let light = shade > 127;
+        let v = if light { alpha } else { 0 };
+        *pixel = tiny_skia::PremultipliedColorU8::from_rgba(v, v, v, alpha).ok_or("bad pixel")?;
+    }
+    let out = root().join("gecko/overlay/browser/components/whisper/content/grain.png");
+    save_png(&pixmap, &out)?;
+    println!("{}", out.display());
+    Ok(())
+}

@@ -50,6 +50,8 @@ FILES = [
     ("omni.ja", "moz-src/browser/components/whisper/WhisperSidebar.sys.mjs", f"{WHISPER}/WhisperSidebar.sys.mjs"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperLayout.sys.mjs", f"{WHISPER}/WhisperLayout.sys.mjs"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperToolbar.sys.mjs", f"{WHISPER}/WhisperToolbar.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperUrlbar.sys.mjs", f"{WHISPER}/WhisperUrlbar.sys.mjs"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/grain.png", f"{WHISPER}/content/grain.png"),
 ]
 
 

@@ -349,6 +349,20 @@ const items = [...opened.querySelectorAll("menuitem.whisper-sidebar-mode-item")]
 return { state: opened.state, menu: opened.id, items };
 """
 
+BAR_JS = r"""
+// The sidebar's bottom bar (WhisperSidebar.sys.mjs) and Firefox's own gear in sidebar-main.
+const bar = document.getElementById("whisper-sidebar-bar");
+const main = document.querySelector("sidebar-main");
+const gear = main?.shadowRoot?.querySelector('moz-button[view="viewCustomizeSidebar"]');
+const shown = e => !!e && e.getBoundingClientRect().width > 0;
+return {
+  shown: shown(bar),
+  buttons: [...(bar?.querySelectorAll(".whisper-sidebar-bar-button") ?? [])]
+    .filter(shown).map(b => b.className.match(/whisper-sidebar-(\w+)$/)?.[1]),
+  firefoxGearShown: shown(gear),
+};
+"""
+
 SEARCH_JS = r"""
 // The search engines' addresses as Whisper builds them (patches/0033).
 const { SearchService } = ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs");
@@ -785,10 +799,16 @@ def main():
         report.check("no welcome, terms or privacy notice tab",
                      not any(re.search(r"welcome|privacy|terms|firstrun|mozilla\.(org|com)", t) for t in tabs), tabs)
         report.check("Cast stylesheet is loaded", r["cast"]["wBlack"] == "#111316", r["cast"])
-        report.check("taller vertical tabs", r["cast"]["tabMinHeight"] == "40px", r["cast"]["tabMinHeight"])
+        report.check("vertical tab rows are 30 px high", r["cast"]["tabMinHeight"] == "30px", r["cast"]["tabMinHeight"])
         s = r["sidebar"]
         report.check("sidebar starts in expanded mode", s["mode"] == "expanded" and s["expanded"]
                      and s["visibility"] == "always-show" and s["verticalTabs"], s)
+        bar = m.run(BAR_JS)
+        report.facts["sidebar_bar"] = bar
+        report.check("the sidebar has one bottom bar with one settings entry (downloads, bookmarks, history, "
+                     "passwords, settings) and no second settings gear",
+                     bar["buttons"] == ["downloads", "bookmarks", "history", "passwords", "settings"]
+                     and bar["shown"] and not bar["firefoxGearShown"], bar)
         report.check("Ctrl+Alt+S shortcut is registered",
                      r["shortcutKey"] == {"key": "S", "modifiers": "accel,alt"}, r["shortcutKey"])
 

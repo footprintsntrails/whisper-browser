@@ -97,12 +97,16 @@ export const WhisperSidebar = {
     this._startObserving();
     this._addShortcut(win);
     this._addMenuItems(win);
+    this._addBottomBar(win);
+    this._watchTabGroups(win);
     await this._applyToWindow(win, this.mode, { respectFirefoxMode: true });
     this._watchLauncher(win);
   },
 
   uninitWindow(win) {
     this._windows.delete(win);
+    win.whisperGroupCounter?.();
+    delete win.whisperGroupCounter;
     win.whisperLauncherObserver?.disconnect();
     delete win.whisperLauncherObserver;
     if (!this._windows.size) {
@@ -321,6 +325,125 @@ export const WhisperSidebar = {
       attributeFilter: ["sidebar-launcher-expanded"],
     });
     win.whisperLauncherObserver = observer;
+  },
+
+  /**
+   * The sidebar's bottom bar: downloads, bookmarks, history, passwords and one
+   * settings entry (Whisper's settings). It replaces Firefox's own row of sidebar
+   * tools and its "Customize sidebar" gear, which looked like a second settings button;
+   * sidebar tools that extensions add stay in Firefox's row. Bookmarks, history and
+   * passwords open Firefox's own sidebar panels (SidebarController.toggle()).
+   *
+   * Also two empty slots for features to come: a space header above the tabs and space
+   * dots in the bar (hidden until something fills them).
+   */
+  _addBottomBar(win) {
+    const doc = win.document;
+    const main = doc.querySelector("sidebar-main");
+    const tabs = doc.getElementById("vertical-tabs");
+    if (!main || !tabs || doc.getElementById("whisper-sidebar-bar")) {
+      return;
+    }
+    win.MozXULElement.insertFTLIfNeeded("whisper/whisper.ftl");
+
+    // sidebar-main shows its light DOM children in its "tabstrip" slot, where the
+    // vertical tabs are.
+    const header = doc.createElement("div");
+    header.id = "whisper-space-header";
+    header.slot = "tabstrip";
+    header.hidden = true;
+    tabs.before(header);
+
+    const bar = doc.createElement("div");
+    bar.id = "whisper-sidebar-bar";
+    bar.slot = "tabstrip";
+    bar.setAttribute("role", "toolbar");
+    doc.l10n.setAttributes(bar, "whisper-sidebar-bar");
+    const dots = doc.createElement("div");
+    dots.id = "whisper-space-dots";
+    dots.hidden = true;
+    const buttons = [
+      ["downloads", () => win.openTrustedLinkIn("about:downloads", "tab")],
+      ["bookmarks", () => win.SidebarController.toggle("viewBookmarksSidebar")],
+      ["history", () => win.SidebarController.toggle("viewHistorySidebar")],
+      ["passwords", () => win.SidebarController.toggle("viewCPMSidebar")],
+    ];
+    for (const [name, action] of buttons) {
+      bar.append(this._barButton(doc, name, action));
+    }
+    const spacer = doc.createElement("div");
+    spacer.className = "whisper-sidebar-bar-spacer";
+    bar.append(dots, spacer);
+    bar.append(
+      this._barButton(doc, "settings", () => win.openPreferences("paneWhisper"))
+    );
+    main.append(bar);
+
+    // Firefox's own buttons for the same panels and its "Customize sidebar" gear live
+    // in sidebar-main's shadow tree; a stylesheet adopted there hides them.
+    const root = main.shadowRoot;
+    if (root) {
+      const sheet = new win.CSSStyleSheet();
+      sheet.replaceSync(`
+        moz-button:is([view="viewBookmarksSidebar"], [view="viewHistorySidebar"],
+          [view="viewCPMSidebar"], [view="viewCustomizeSidebar"]),
+        .overflow-button {
+          display: none !important;
+        }`);
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+    }
+  },
+
+  _barButton(doc, name, action) {
+    const button = doc.createElement("button");
+    button.className = `whisper-sidebar-bar-button whisper-sidebar-${name}`;
+    doc.l10n.setAttributes(button, `whisper-sidebar-bar-${name}`);
+    button.addEventListener("click", () => action());
+    return button;
+  },
+
+  /** Each tab group's label shows how many tabs the group has (cast.css). */
+  _watchTabGroups(win) {
+    const container = win.gBrowser?.tabContainer;
+    if (!container) {
+      return;
+    }
+    let scheduled = false;
+    const update = () => {
+      scheduled = false;
+      for (const group of win.document.querySelectorAll("tab-group")) {
+        const label = group.querySelector(".tab-group-label");
+        const count = String(group.tabs?.length ?? 0);
+        if (label && label.getAttribute("data-whisper-count") != count) {
+          label.setAttribute("data-whisper-count", count);
+        }
+      }
+    };
+    const schedule = () => {
+      if (!scheduled) {
+        scheduled = true;
+        win.requestAnimationFrame(update);
+      }
+    };
+    const events = [
+      "TabOpen",
+      "TabClose",
+      "TabGrouped",
+      "TabUngrouped",
+      "TabGroupCreate",
+      "TabGroupRemoved",
+      "TabGroupExpand",
+      "TabGroupCollapse",
+    ];
+    for (const type of events) {
+      container.addEventListener(type, schedule);
+    }
+    win.whisperGroupCounter = () => {
+      for (const type of events) {
+        container.removeEventListener(type, schedule);
+      }
+    };
+    schedule();
   },
 
   _addShortcut(win) {

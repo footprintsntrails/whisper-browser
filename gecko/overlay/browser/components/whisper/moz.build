@@ -15,6 +15,7 @@
 #   WhisperLoginCrypto.sys.mjs  reads their saved passwords (their own key4.db)
 #   WhisperSidebar.sys.mjs  the three tab sidebar modes
 #   WhisperToolbar.sys.mjs  the slim toolbar row, set once per profile
+#   WhisperUrlbar.sys.mjs   labels for the address bar's results panel
 #   content/                the Cast stylesheets and the Inter font
 #   locales/                Whisper's strings
 #   distribution/           uBlock Origin, installed on first start
@@ -39,4 +40,5 @@ MOZ_SRC_FILES += [
     "WhisperSidebar.sys.mjs",
     "WhisperToolbar.sys.mjs",
     "WhisperUI.sys.mjs",
+    "WhisperUrlbar.sys.mjs",
 ]

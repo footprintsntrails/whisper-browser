@@ -36,9 +36,9 @@
   --whisper-space-color: var(--w-black);
 
   /* Tab sidebar geometry (see "Tab sidebar" below) */
-  --w-tab-height: 40px;
-  --w-tab-icon: 20px;
-  --w-tab-label: 14px;
+  --w-tab-height: 30px;
+  --w-tab-icon: 16px;
+  --w-tab-label: 13px;
   --w-sidebar-width: 216px;
   --w-edge: 10px;
   /* The invisible collapsed launcher in auto-hide mode (see "Tab sidebar") */
@@ -78,10 +78,14 @@
   font-family: "Whisper Inter", system-ui, -apple-system, "Segoe UI", sans-serif !important;
 }
 
-/* Frame: one black surface behind everything */
+/* Frame: one surface behind everything, in the window's space colour (Cast black by
+ * default, WhisperLayout) with the cast-metal grain over it (a still image). */
 #navigator-toolbox, #nav-bar, #TabsToolbar, #titlebar, #browser, #sidebar-container, #sidebar-box {
-  background: var(--w-black) !important;
+  background: transparent !important;
   border-color: transparent !important;
+}
+#navigator-toolbox, #browser {
+  background: url("chrome://whisper/content/grain.png"), var(--whisper-space-color) !important;
 }
 #navigator-toolbox { border-bottom: none !important; }
 #nav-bar { box-shadow: none !important; }
@@ -119,17 +123,17 @@
 #urlbar:is([focused], [open]) #urlbar-background { background-color: var(--w-ink) !important; }
 #urlbar[focused] #urlbar-background { box-shadow: 0 0 0 1px var(--w-focus) !important; }
 
-/* Tabs */
+/* Tabs: a lighter pill for the selected tab, a fainter one under the pointer */
 .tabbrowser-tab { color: var(--w-text) !important; }
-.tabbrowser-tab .tab-background { border-radius: 8px !important; }
+.tabbrowser-tab .tab-background { border-radius: 8px !important; box-shadow: none !important; }
 .tabbrowser-tab:is([selected], [visuallyselected]) .tab-background {
-  background: var(--w-select) !important;
-  box-shadow: inset 2px 0 0 var(--w-text) !important;
+  background: color-mix(in srgb, var(--w-text) 12%, transparent) !important;
 }
 .tabbrowser-tab:not([selected], [visuallyselected]):hover .tab-background {
-  background: var(--w-raise) !important;
+  background: color-mix(in srgb, var(--w-text) 6%, transparent) !important;
 }
 .tab-label { font-weight: 500 !important; }
+.tabbrowser-tab:not([selected], [visuallyselected]) .tab-label { color: color-mix(in srgb, var(--w-text) 82%, transparent); }
 
 /* Pinned tabs as tiles at the top of the sidebar */
 #vertical-pinned-tabs-container .tabbrowser-tab .tab-background {
@@ -211,4 +215,225 @@ menupopup, panel { --panel-border-radius: 10px !important; }
  */
 :root[whisper-tabs="vertical"]:not([customizing]) #sidebar-button {
   display: none !important;
+}
+
+/* ===== Sidebar details (WhisperSidebar.sys.mjs) ======================================
+ * Close buttons only under the pointer or on the selected tab; tab groups as a quiet
+ * header (colour chip, name, number of tabs) that folds the group; a muted "New tab"
+ * row; and one bottom bar: downloads, bookmarks, history, passwords, settings.
+ */
+@media -moz-pref("sidebar.verticalTabs") {
+  #tabbrowser-tabs[orient="vertical"] {
+    .tabbrowser-tab:not(:hover, [selected], [visuallyselected]) .tab-close-button {
+      visibility: hidden;
+    }
+
+    .tab-group-label {
+      background: transparent !important;
+      color: var(--w-muted) !important;
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      text-transform: none !important;
+      border-radius: 6px !important;
+      padding-inline: 6px !important;
+      outline: none !important;
+      min-height: 26px !important;
+      display: flex !important;
+      align-items: center;
+      gap: 8px;
+
+      &::before {
+        content: "";
+        inline-size: 8px;
+        block-size: 8px;
+        border-radius: 3px;
+        background: var(--tab-group-color);
+        flex: none;
+      }
+
+      &::after {
+        content: attr(data-whisper-count);
+        margin-inline-start: auto;
+        font-weight: 500;
+        color: color-mix(in srgb, var(--w-muted) 80%, transparent);
+      }
+
+      &:hover {
+        background: color-mix(in srgb, var(--w-text) 6%, transparent) !important;
+        color: var(--w-text) !important;
+      }
+    }
+
+    tab-group {
+      --tab-group-line-thickness: 0px;
+    }
+  }
+
+  :is(#vertical-tabs-newtab-button, #tabs-newtab-button) {
+    color: var(--w-muted) !important;
+    --tab-min-height: var(--w-tab-height);
+
+    &:hover {
+      color: var(--w-text) !important;
+    }
+  }
+}
+
+#whisper-sidebar-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--w-text) 7%, transparent);
+
+  /* The compact sidebar: one column of icons */
+  sidebar-main:not([expanded]) & {
+    flex-direction: column;
+  }
+}
+
+.whisper-sidebar-bar-spacer {
+  flex: 1;
+}
+
+.whisper-sidebar-bar-button {
+  appearance: none;
+  inline-size: 30px;
+  block-size: 30px;
+  flex: none;
+  border: none;
+  border-radius: 8px;
+  background: center / 16px no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--w-muted);
+  color: var(--w-muted);
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--w-text) 8%, transparent);
+    fill: var(--w-text);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--w-focus);
+    outline-offset: 1px;
+  }
+}
+
+.whisper-sidebar-downloads { background-image: url("chrome://browser/skin/downloads/downloads.svg"); }
+.whisper-sidebar-bookmarks { background-image: url("chrome://browser/skin/bookmark-hollow.svg"); }
+.whisper-sidebar-history { background-image: url("chrome://browser/skin/history.svg"); }
+.whisper-sidebar-passwords { background-image: url("chrome://browser/skin/login.svg"); }
+.whisper-sidebar-settings { background-image: url("chrome://global/skin/icons/settings.svg"); }
+
+/* ===== Address bar results (WhisperUrlbar.sys.mjs) ====================================
+ * A rounded panel in the Cast palette under the field, at most 720 px wide; rows
+ * grouped under small labels; one soft pill for the selected row (the pointer's row is
+ * fainter); a row's action ("Switch to tab", "Search with ...") only on the selected
+ * row; the search engines as chips at the bottom.
+ */
+#urlbar {
+  --urlbarview-background-color-hover: color-mix(in srgb, var(--w-text) 5%, transparent) !important;
+  --urlbarview-background-color-selected: color-mix(in srgb, var(--w-text) 12%, transparent) !important;
+  --urlbarview-text-color-selected: #ffffff !important;
+  --urlbarview-text-color-secondary: var(--w-muted) !important;
+  --urlbarview-separator-color: transparent !important;
+  --urlbarview-text-color-action: var(--w-muted) !important;
+}
+
+#urlbar[open] .urlbarView {
+  max-inline-size: 720px;
+  margin-block-start: 6px !important;
+  padding: 8px !important;
+  background: var(--w-surface) !important;
+  border: 1px solid var(--w-line);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+
+/* The field keeps its own shape and the panel floats under it: while the panel is open
+ * Firefox's shared background (field and panel together) is see-through and the field
+ * draws its own. Colours only, no sizes: the address bar measures its parts. */
+#urlbar[open] > .urlbar-background {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+#urlbar[open] .urlbar-input-container {
+  background-color: var(--w-ink);
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--w-focus);
+}
+
+.urlbarView-row {
+  border-radius: 8px !important;
+}
+
+/* Group labels: Whisper's, in place of Firefox's ("Firefox Suggest", ...). */
+.urlbarView-row[label]:not([data-whisper-label])::before {
+  display: none !important;
+}
+.urlbarView-row[data-whisper-label] {
+  margin-block-start: 22px !important;
+
+  &::before {
+    content: attr(data-whisper-label) !important;
+    display: block !important;
+    position: absolute;
+    inset-block-start: -18px;
+    margin-inline-start: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--w-muted);
+  }
+
+  &:first-child {
+    margin-block-start: 18px !important;
+  }
+}
+
+/* The action only on the selected row */
+.urlbarView-row:not([selected]) :is(.urlbarView-action, .urlbarView-title-separator, .urlbarView-row-buttons) {
+  display: none !important;
+}
+.urlbarView-row[selected] .urlbarView-action {
+  margin-inline-start: auto;
+  color: var(--w-muted) !important;
+}
+
+/* Search engines as chips */
+#urlbar .search-one-offs {
+  border-top: 1px solid var(--w-line) !important;
+  margin-block-start: 6px;
+  padding-block: 8px 2px !important;
+}
+#urlbar .search-panel-one-offs-header-label[data-whisper-hint] {
+  font-size: 0 !important;
+
+  &::after {
+    content: attr(data-whisper-hint);
+    font-size: 11px;
+    color: var(--w-muted);
+  }
+}
+#urlbar .search-panel-one-offs .searchbar-engine-one-off-item {
+  inline-size: auto !important;
+  min-inline-size: 0 !important;
+  block-size: 28px !important;
+  padding-inline: 8px 10px !important;
+  margin-inline-end: 4px !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--w-text) 6%, transparent) !important;
+  color: var(--w-text) !important;
+
+  .button-text {
+    display: inline !important;
+    font-size: 12px;
+    margin-inline-start: 6px;
+  }
+
+  &:is(:hover, [selected]) {
+    background: color-mix(in srgb, var(--w-text) 14%, transparent) !important;
+  }
 }

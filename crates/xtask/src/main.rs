@@ -15,6 +15,7 @@ Artwork (results are committed):
   banner --font-dir DIR                assets/readme/banner.png (Inter TTFs in DIR)
   installer-art --font-dir DIR         assets/installer/*.bmp for the Windows installer
   gecko-branding --font-dir DIR        images in gecko/overlay/browser/branding/whisper
+  grain                                the cast-metal grain tile for the window and new tab page
   canary-art --font-dir DIR            Whisper Canary's logo, icon, installer art and branding
                                        images in gecko/variants/canary
 
@@ -35,6 +36,7 @@ fn main() -> ExitCode {
         "installer-art" => art::installer_art(&opts),
         "gecko-branding" => art::gecko_branding(&opts),
         "canary-art" => art::canary_art(&opts),
+        "grain" => art::grain(),
         "scan" => scan::scan(),
         "help" | "--help" | "-h" => {
             print!("{HELP}");

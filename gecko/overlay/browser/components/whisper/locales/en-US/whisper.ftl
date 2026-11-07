@@ -14,3 +14,32 @@ whisper-sidebar-mode-autohide =
 whisper-sidebar-mode-expanded =
     .label = Expanded sidebar
     .accesskey = x
+
+## The sidebar's bottom bar (WhisperSidebar.sys.mjs).
+
+whisper-sidebar-bar =
+    .aria-label = Sidebar
+whisper-sidebar-bar-downloads =
+    .title = Downloads
+    .aria-label = Downloads
+whisper-sidebar-bar-bookmarks =
+    .title = Bookmarks
+    .aria-label = Bookmarks
+whisper-sidebar-bar-history =
+    .title = History
+    .aria-label = History
+whisper-sidebar-bar-passwords =
+    .title = Passwords
+    .aria-label = Passwords
+whisper-sidebar-bar-settings =
+    .title = Settings
+    .aria-label = Settings
+
+## The address bar's results panel (WhisperUrlbar.sys.mjs): group labels and the
+## hint above the row of search engines.
+
+whisper-urlbar-group-tabs = Open tabs
+whisper-urlbar-group-bookmarks = Bookmarks
+whisper-urlbar-group-history = History
+whisper-urlbar-group-search = Search
+whisper-urlbar-engines-hint = Tab — switch engine

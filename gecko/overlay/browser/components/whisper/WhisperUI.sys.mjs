@@ -29,6 +29,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WhisperLayout: "moz-src:///browser/components/whisper/WhisperLayout.sys.mjs",
   WhisperSidebar: "moz-src:///browser/components/whisper/WhisperSidebar.sys.mjs",
   WhisperToolbar: "moz-src:///browser/components/whisper/WhisperToolbar.sys.mjs",
+  WhisperUrlbar: "moz-src:///browser/components/whisper/WhisperUrlbar.sys.mjs",
 });
 
 const CAST_CHROME_SHEET = "chrome://whisper/content/cast.css";
@@ -88,6 +89,7 @@ export const WhisperUI = {
   /** After the window is up; nothing here delays the first paint. */
   onWindowDelayedStartup(win) {
     guarded("sidebar modes", () => lazy.WhisperSidebar.initWindow(win));
+    guarded("address bar results", () => lazy.WhisperUrlbar.initWindow(win));
     if (!this._uboSetupStarted) {
       this._uboSetupStarted = true;
       guarded("uBlock Origin first run", () => this._setUpUBlockOrigin());
@@ -99,6 +101,9 @@ export const WhisperUI = {
       lazy.WhisperSidebar.uninitWindow(win)
     );
     guarded("layout cleanup", () => lazy.WhisperLayout.uninitWindow(win));
+    guarded("address bar results cleanup", () =>
+      lazy.WhisperUrlbar.uninitWindow(win)
+    );
   },
 
   /**
