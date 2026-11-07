@@ -1,0 +1,49 @@
+Whisper: the installer and uninstaller contact nobody
+
+What: the installer no longer sends its install ping (SendPingIfApplicable, an HTTP
+POST to incoming.telemetry.mozilla.org after every install, silent or not), the
+uninstaller no longer sends an uninstall ping there (un.SendUninstallPing), and its
+last page no longer has the "Tell Mozilla why you uninstalled" checkbox, which opened
+a survey on qsurvey.mozilla.com.
+Why: Whisper does not report on its users, and Mozilla is not the maker of Whisper.
+Firefox's installer sent the install ping regardless of any browser setting. The
+functions stay in place and return at once, so the rest of the installer is
+unchanged.
+---
+--- a/browser/installer/windows/nsis/installer.nsi
++++ b/browser/installer/windows/nsis/installer.nsi
+@@ -1017,6 +1017,9 @@
+ ; since we'd be double-counting the number of installations. The stub installer
+ ; is repsonsible for sending the ping in that case.
+ Function SendPingIfApplicable
++  ; Whisper: no install ping to Mozilla's telemetry server
++  ; (patches/0034-installer-contacts-nobody.patch).
++  Return
+   ClearErrors
+   ${GetParameters} $0
+   ${GetOptions} $0 "/LaunchedFromStub" $0
+--- a/browser/installer/windows/nsis/uninstaller.nsi
++++ b/browser/installer/windows/nsis/uninstaller.nsi
+@@ -199,10 +199,8 @@
+ !insertmacro MUI_UNPAGE_INSTFILES
+ 
+ ; Finish Page
+-!define MUI_FINISHPAGE_SHOWREADME
+-!define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+-!define MUI_FINISHPAGE_SHOWREADME_TEXT $(UN_SURVEY_CHECKBOX_LABEL)
+-!define MUI_FINISHPAGE_SHOWREADME_FUNCTION un.Survey
++; Whisper: without Mozilla's "Tell Mozilla why you uninstalled" checkbox, which
++; opened a survey on qsurvey.mozilla.com (patches/0034-installer-contacts-nobody.patch).
+ !define MUI_PAGE_CUSTOMFUNCTION_PRE un.preFinish
+ !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.showFinish
+ !insertmacro MUI_UNPAGE_FINISH
+@@ -328,6 +326,9 @@
+ FunctionEnd
+ 
+ Function un.SendUninstallPing
++  ; Whisper: no uninstall ping to Mozilla's telemetry server
++  ; (patches/0034-installer-contacts-nobody.patch).
++  Return
+   ; Notably, we only check the non-private AUMID here. There's no good reason
+   ; to send the uninstall ping twice.
+   ${If} $AppUserModelID == ""
