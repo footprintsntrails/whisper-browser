@@ -136,10 +136,10 @@ jobs:
         with:
           name: whisper-${{ env.FIREFOX_VERSION }}-linux-x86_64
           path: dist
-      - name: What the browser needs to run, plus Xvfb and ImageMagick for screenshots
+      - name: What the browser needs to run, plus Xvfb, ImageMagick for screenshots and xdotool for the pointer
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends xvfb imagemagick \
+          sudo apt-get install -y -q --no-install-recommends xvfb imagemagick xdotool \
             libgtk-3-0t64 libasound2t64 libx11-xcb1 libdbus-glib-1-2 libxtst6 libpci3
       - name: Unpack
         run: |

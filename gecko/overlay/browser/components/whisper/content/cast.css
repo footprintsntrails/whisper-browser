@@ -38,6 +38,8 @@
   --w-tab-label: 14px;
   --w-sidebar-width: 216px;
   --w-edge: 10px;
+  /* The invisible collapsed launcher in auto-hide mode (see "Tab sidebar") */
+  --w-reveal: 18px;
 
   --toolbar-bgcolor: var(--w-black) !important;
   --toolbar-color: var(--w-text) !important;
@@ -169,7 +171,10 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   /* Auto-hide: Firefox's "expand on hover" sidebar, with the collapsed sidebar turned
    * into an invisible strip along the window's left edge. Touching it (the screen edge,
    * when the window is maximized) slides the sidebar in over the page; it slides out
-   * again when the pointer leaves. While Firefox animates, its own sizes apply. */
+   * again when the pointer leaves. While Firefox animates, its own sizes apply.
+   * Firefox reveals the sidebar while the pointer is over the collapsed launcher less
+   * its 4 px splitter: the invisible launcher is 18 px wide, reaching 8 px over the
+   * page, so the strip to touch is 14 px (it does not paint or catch clicks). */
   :root[whisper-sidebar-mode="autohide"][sidebar-expand-on-hover] {
     #sidebar-container:not([sidebar-launcher-expanded], [sidebar-ongoing-animations]) {
       width: var(--w-edge) !important;
@@ -177,7 +182,9 @@ menupopup, panel { --panel-border-radius: 10px !important; }
       max-width: var(--w-edge) !important;
 
       > sidebar-main {
-        min-width: 0 !important;
+        width: var(--w-reveal) !important;
+        min-width: var(--w-reveal) !important;
+        max-width: var(--w-reveal) !important;
         visibility: hidden;
       }
     }

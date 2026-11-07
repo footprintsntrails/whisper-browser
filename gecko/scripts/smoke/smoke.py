@@ -19,7 +19,9 @@ browser runs under the X display in $DISPLAY (xvfb in CI). The test:
      uBlock Origin installed from the distribution folder, enabled, allowed in private
      windows and pinned to the toolbar, no welcome or terms tab, the Cast stylesheet
      loaded, the three sidebar modes (with a screenshot of each), the auto-hide reveal
-     at the left edge, the sidebar menu items and the keyboard shortcut;
+     in the 14 px strip at the left edge, at its very edge and near its inner side (the
+     real X pointer with xdotool when installed), the sidebar menu items and the
+     keyboard shortcut;
   4. after the idle time the browser has checked for updates on its own (the update
      timer fired; the check itself finds no network here);
   5. the browser quits cleanly (exit code 0), and the profile on disk agrees
@@ -204,14 +206,21 @@ return {
 };
 """
 
-HOVER_JS = r"""
+SYNTH_MOVE_JS = r"""
 const [x, y] = args;
 const sleep = ms => new Promise(res => setTimeout(res, ms));
-// A real (synthesized) pointer move, which Firefox's own hover tracking reacts to.
-window.synthesizeMouseEvent("mousemove", x, y);
-await sleep(300);
-window.synthesizeMouseEvent("mousemove", x, y + 4);
-await sleep(1200);
+// Screen pixels to window coordinates; a synthesized pointer move, which Firefox's
+// own hover tracking reacts to.
+const cx = x - window.mozInnerScreenX, cy = y - window.mozInnerScreenY;
+window.synthesizeMouseEvent("mousemove", cx, cy);
+await sleep(150);
+window.synthesizeMouseEvent("mousemove", cx, cy + 6);
+return true;
+"""
+
+SIDEBAR_STATE_JS = r"""
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+await sleep(1400);
 const c = document.getElementById("sidebar-container");
 return {
   expanded: c.hasAttribute("sidebar-launcher-expanded"),
@@ -314,6 +323,24 @@ await sleep(1500);
 const after = Services.prefs.getStringPref("whisper.sidebar.mode", "");
 return { before, after };
 """
+
+
+class Pointer:
+    """The real X pointer (xdotool) when it is installed, so the checks see what a mouse
+    does, including leaving the window; otherwise events synthesized in the window."""
+
+    def __init__(self, m):
+        self.m = m
+        self.xdotool = shutil.which("xdotool") if os.environ.get("DISPLAY") else None
+
+    def move(self, x, y):
+        """x, y: screen pixels (the window is placed at a known spot)."""
+        if self.xdotool:
+            subprocess.run([self.xdotool, "mousemove", str(x), str(y)], check=False, timeout=10)
+            time.sleep(0.15)
+            subprocess.run([self.xdotool, "mousemove", str(x), str(y + 6)], check=False, timeout=10)
+        else:
+            self.m.run(SYNTH_MOVE_JS, x, y)
 
 
 def capture(m, path, report):
@@ -503,6 +530,8 @@ def main():
         sc = m.run(SHORTCUT_JS)
         report.check("the shortcut switches the mode", sc["before"] == "expanded" and sc["after"] == "compact", sc)
 
+        pointer = Pointer(m)
+        report.facts["pointer"] = "xdotool" if pointer.xdotool else "synthesized"
         widths = {}
         for i, mode in enumerate(["compact", "autohide", "expanded"], start=3):
             st = m.run(MODE_JS, mode)
@@ -512,16 +541,27 @@ def main():
             if mode == "autohide":
                 report.check("auto-hide: sidebar collapses to an edge strip",
                              st["visibility"] == "expand-on-hover" and not st["expanded"] and st["width"] <= 16, st)
-                hover = m.run(HOVER_JS, 3, 400)
-                report.facts["autohide_hover"] = hover
-                capture(m, os.path.join(a.out, "5b-autohide-revealed.png"), report)
-                report.check("auto-hide: touching the left edge slides the sidebar in over the page",
-                             hover["expanded"] and hover["width"] > 150 and hover["tabboxLeft"] == st["tabboxLeft"],
-                             hover)
-                away = m.run(HOVER_JS, 900, 400)
-                report.facts["autohide_away"] = away
-                report.check("auto-hide: it hides again when the pointer leaves",
-                             not away["expanded"] and away["width"] <= 16, away)
+                # The window 100 px from the screen's left edge, as a window that is not
+                # maximized: the pointer has to stop in the strip at its edge.
+                m.command("WebDriver:SetWindowRect", {"x": 100, "y": 0, "width": 1340, "height": 900})
+                time.sleep(1.5)
+                for name, x in (("touching the left edge", 102), ("near the left edge", 112)):
+                    pointer.move(800, 400)
+                    m.run(SIDEBAR_STATE_JS)
+                    pointer.move(x, 400)
+                    hover = m.run(SIDEBAR_STATE_JS)
+                    report.facts[f"autohide_{name}"] = hover
+                    if name == "touching the left edge":
+                        capture(m, os.path.join(a.out, "5b-autohide-revealed.png"), report)
+                    report.check(f"auto-hide: {name} slides the sidebar in over the page",
+                                 hover["expanded"] and hover["width"] > 150 and hover["tabboxLeft"] == st["tabboxLeft"],
+                                 hover)
+                    pointer.move(800, 400)
+                    away = m.run(SIDEBAR_STATE_JS)
+                    report.check(f"auto-hide: after {name}, it hides again when the pointer leaves",
+                                 not away["expanded"] and away["width"] <= 16, away)
+                m.command("WebDriver:SetWindowRect", {"x": 0, "y": 0, "width": 1440, "height": 900})
+                time.sleep(1)
         report.check("compact mode is a narrow icon strip (at most 60 px)", 36 <= widths["compact"] <= 60, widths)
         report.check("expanded mode is wider than compact and at most 240 px",
                      widths["compact"] < widths["expanded"] <= 240, widths)
