@@ -21,6 +21,8 @@
  *   - drops the link to Mozilla's support site, hides Mozilla's offers (VPN, Relay,
  *     suggestions from Mozilla's server; settings.css) and calls Firefox Home
  *     Whisper's page;
+ *   - adds "Use this network's DNS until Whisper restarts" to Firefox's privacy
+ *     pane, where Firefox's page for a site secure DNS could not find sends the user;
  *   - turns strict secure DNS back on at startup after the user chose the network's
  *     DNS "until Whisper restarts" (whisper.dns.sessionFallback).
  */
@@ -59,6 +61,10 @@ const DROPPED = ["helpButton", "category-more-from-mozilla"];
 const RELABEL = {
   "home-mode-choice-default-fx": "whisper-settings-home-default",
 };
+
+const PRIVACY_PANE = "privacy";
+const DNS_GROUP = "dnsOverHttps";
+const DNS_FALLBACK_GROUP = "whisperDnsFallback";
 
 const TRR_MODE = "network.trr.mode";
 const DNS_SESSION = "whisper.dns.sessionFallback";
@@ -112,6 +118,93 @@ export const WhisperSettings = {
     );
   },
 
+  /**
+   * Secure DNS settings, shared by the Whisper pane and Firefox's privacy pane, where
+   * Firefox's page for a site that secure DNS could not find leads ("DNS settings"
+   * opens about:preferences#privacy-doh): there Whisper's group comes right after
+   * Firefox's DNS group, which the page scrolls to. Runs after Firefox has registered its panes (its listener
+   * came first); only the privacy pane's list of groups changes.
+   */
+  _addDnsSettings(win) {
+    const { Preferences, SettingGroupManager, SettingPaneManager } = win;
+    for (const [id, type] of [
+      [TRR_MODE, "int"],
+      [DNS_SESSION, "bool"],
+    ]) {
+      if (!Preferences.get(id)) {
+        Preferences.add({ id, type });
+      }
+    }
+    Preferences.addSetting({ id: "whisperDnsMode", pref: TRR_MODE });
+    Preferences.addSetting({ id: "whisperDnsSessionPref", pref: DNS_SESSION });
+    Preferences.addSetting({
+      id: "whisperDnsStrict",
+      deps: ["whisperDnsMode", "whisperDnsSessionPref"],
+      get: (_, { whisperDnsMode, whisperDnsSessionPref }) =>
+        whisperDnsMode.value == 3 || !!whisperDnsSessionPref.value,
+      set: (on, { whisperDnsMode, whisperDnsSessionPref }) => {
+        whisperDnsSessionPref.value = false;
+        whisperDnsMode.value = on ? 3 : 2;
+      },
+      disabled: ({ whisperDnsSessionPref }) => !!whisperDnsSessionPref.value,
+    });
+    Preferences.addSetting({
+      id: "whisperDnsSession",
+      deps: ["whisperDnsMode", "whisperDnsSessionPref"],
+      visible: ({ whisperDnsMode, whisperDnsSessionPref }) =>
+        whisperDnsMode.value == 3 && !whisperDnsSessionPref.value,
+      // Strict again at the next start (_endDnsSession).
+      onUserClick: (_, { whisperDnsMode, whisperDnsSessionPref }) => {
+        whisperDnsSessionPref.value = true;
+        whisperDnsMode.value = 2;
+      },
+    });
+    Preferences.addSetting({
+      id: "whisperDnsSessionOn",
+      deps: ["whisperDnsSessionPref"],
+      visible: ({ whisperDnsSessionPref }) => !!whisperDnsSessionPref.value,
+    });
+    SettingGroupManager.registerGroups({
+      [DNS_FALLBACK_GROUP]: {
+        l10nId: "whisper-settings-dns-fallback-group",
+        headingLevel: 2,
+        items: [
+          {
+            id: "whisperDnsSessionOn",
+            l10nId: "whisper-settings-dns-session-on",
+            control: "moz-message-bar",
+            controlAttrs: { type: "warning" },
+          },
+          {
+            id: "whisperDnsSession",
+            l10nId: "whisper-settings-dns-session",
+            control: "moz-box-button",
+          },
+        ],
+      },
+    });
+    let privacy;
+    try {
+      privacy = SettingPaneManager.get(PRIVACY_PANE);
+    } catch (e) {
+      return;
+    }
+    const at = privacy.groupIds.indexOf(DNS_GROUP);
+    if (at < 0 || privacy.groupIds.includes(DNS_FALLBACK_GROUP)) {
+      return;
+    }
+    privacy.groupIds.splice(at + 1, 0, DNS_FALLBACK_GROUP);
+    // Settings opened on the privacy pane (as the error page does) have drawn it
+    // already: draw it again with the new group, then set the group up.
+    const pane = win.document.querySelector(
+      'setting-pane[data-category="panePrivacy"]'
+    );
+    if (pane?.initialized) {
+      pane.requestUpdate();
+      pane.updateComplete.then(() => win.initSettingGroup(DNS_FALLBACK_GROUP));
+    }
+  },
+
   _setUp(win) {
     const doc = win.document;
     const nav = doc.getElementById("categories");
@@ -160,6 +253,20 @@ export const WhisperSettings = {
       childList: true,
       subtree: true,
     });
+
+    // Firefox's page for a site that secure DNS could not find ("DNS settings")
+    // opens Firefox's DNS pane: it gets Whisper's way out for this session too.
+    doc.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        try {
+          this._addDnsSettings(win);
+        } catch (e) {
+          console.error("Whisper: secure DNS settings", e);
+        }
+      },
+      { once: true }
+    );
 
     // Settings opened without a pane: Whisper's.
     if (!win.location.hash) {

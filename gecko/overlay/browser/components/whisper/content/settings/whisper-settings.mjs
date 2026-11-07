@@ -34,8 +34,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const UBO_ID = "uBlock0@raymondhill.net";
-const TRR_MODE = "network.trr.mode";
-const DNS_SESSION = "whisper.dns.sessionFallback";
 const LIMITS_URL =
   "https://github.com/footprintsntrails/whisper-browser#honest-limits";
 const NETWORK_URL =
@@ -68,51 +66,9 @@ Preferences.addSetting({
 });
 
 // --- Secure DNS -----------------------------------------------------------------------
+// The DNS settings (whisperDnsStrict, whisperDnsSession, whisperDnsSessionOn) are
+// added by WhisperSettings.sys.mjs, because Firefox's privacy pane shows them too.
 
-// Firefox's privacy pane may have added the DNS pref already.
-for (const [id, type] of [
-  [TRR_MODE, "int"],
-  [DNS_SESSION, "bool"],
-]) {
-  if (!Preferences.get(id)) {
-    Preferences.add({ id, type });
-  }
-}
-Preferences.addSetting({
-  id: "whisperDnsMode",
-  pref: TRR_MODE,
-});
-Preferences.addSetting({
-  id: "whisperDnsSessionPref",
-  pref: DNS_SESSION,
-});
-Preferences.addSetting({
-  id: "whisperDnsStrict",
-  deps: ["whisperDnsMode", "whisperDnsSessionPref"],
-  get: (_, { whisperDnsMode, whisperDnsSessionPref }) =>
-    whisperDnsMode.value == 3 || !!whisperDnsSessionPref.value,
-  set: (on, { whisperDnsMode, whisperDnsSessionPref }) => {
-    whisperDnsSessionPref.value = false;
-    whisperDnsMode.value = on ? 3 : 2;
-  },
-  disabled: ({ whisperDnsSessionPref }) => !!whisperDnsSessionPref.value,
-});
-Preferences.addSetting({
-  id: "whisperDnsSession",
-  deps: ["whisperDnsMode", "whisperDnsSessionPref"],
-  visible: ({ whisperDnsMode, whisperDnsSessionPref }) =>
-    whisperDnsMode.value == 3 && !whisperDnsSessionPref.value,
-  // WhisperSettings.sys.mjs turns strict mode back on at the next start.
-  onUserClick: (_, { whisperDnsMode, whisperDnsSessionPref }) => {
-    whisperDnsSessionPref.value = true;
-    whisperDnsMode.value = 2;
-  },
-});
-Preferences.addSetting({
-  id: "whisperDnsSessionOn",
-  deps: ["whisperDnsSessionPref"],
-  visible: ({ whisperDnsSessionPref }) => !!whisperDnsSessionPref.value,
-});
 Preferences.addSetting({ id: "whisperDnsProvider" });
 
 // --- Sync -----------------------------------------------------------------------------

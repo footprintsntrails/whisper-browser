@@ -74,6 +74,10 @@ whisper-settings-dns-session =
     .description = For a network that blocks secure DNS, such as some hotel and office networks. The network can see which sites you look up.
 whisper-settings-dns-session-on =
     .message = The network’s DNS is in use until Whisper restarts.
+# In Firefox's DNS pane, which Firefox's error page opens when secure DNS fails.
+whisper-settings-dns-fallback-group =
+    .label = Sites won’t open on this network?
+    .description = Some networks, such as hotel and office Wi-Fi, block secure DNS.
 whisper-settings-dns-provider =
     .label = Provider and exceptions
 

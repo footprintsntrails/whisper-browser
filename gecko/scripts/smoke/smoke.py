@@ -586,6 +586,19 @@ const out = {
   text: pane?.innerText?.slice(0, 4000) ?? "",
 };
 gBrowser.removeTab(tab);
+// Where Firefox's page for a site that secure DNS could not find leads ("DNS
+// settings"): Whisper's way out for this session, under Firefox's DNS group.
+const doh = gBrowser.addTrustedTab("about:preferences#privacy-doh");
+gBrowser.selectedTab = doh;
+let fallback = null;
+for (let i = 0; i < 40 && !fallback?.checkVisibility(); i++) {
+  await sleep(250);
+  fallback = doh.linkedBrowser.contentDocument?.querySelector(
+    'setting-pane[data-category="panePrivacy"] setting-group[groupid="whisperDnsFallback"]');
+}
+out.dnsFallbackShown = !!fallback?.checkVisibility();
+out.dnsFallbackButton = !!fallback?.querySelector("#setting-control-whisperDnsSession moz-box-button")?.checkVisibility();
+gBrowser.removeTab(doh);
 return out;
 """
 
@@ -1036,6 +1049,9 @@ def main():
                      not settings["helpButton"] and not {"paneAbout", "paneSync", "paneExperimental",
                                                          "paneMoreFromMozilla"} & set(settings["nav"]),
                      settings["nav"])
+        report.check("secure DNS is strict, and the page Firefox opens when it fails offers the network's DNS "
+                     "until restart", settings["trrMode"] == 3 and settings["dnsFallbackShown"]
+                     and settings["dnsFallbackButton"], settings)
         report.check("the Whisper pane's switches show the prefs (search suggestions, strict secure DNS)",
                      settings["suggestions"] == settings["suggestPref"]
                      and settings["dnsStrict"] == (settings["trrMode"] == 3), settings)

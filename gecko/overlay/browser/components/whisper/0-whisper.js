@@ -129,9 +129,12 @@ pref("browser.contentblocking.category", "strict");
 pref("privacy.globalprivacycontrol.enabled", true);
 
 // --- DNS over HTTPS through Quad9 ---------------------------------------------------
-// Mode 2: DoH first, the system resolver only if DoH fails. Mode 3 (DoH only) is
-// stricter but breaks browsing on networks that block DoH; switch to 3 if yours does not.
-pref("network.trr.mode", 2);
+// Mode 3: DoH only, the network never sees or answers the lookups. Where a network
+// blocks DoH, Firefox's error page says so and its "DNS settings" button leads to
+// "Use this network's DNS until Whisper restarts" (WhisperSettings.sys.mjs); the
+// Whisper pane of Settings switches between 3 and 2 (DoH first, the network's DNS if
+// DoH fails).
+pref("network.trr.mode", 3);
 pref("network.trr.uri", "https://dns.quad9.net/dns-query");
 pref("network.trr.custom_uri", "https://dns.quad9.net/dns-query");
 // Firefox's automatic DoH rollout and its test lookups stay out of it.
