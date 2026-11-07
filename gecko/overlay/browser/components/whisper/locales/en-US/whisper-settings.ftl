@@ -17,8 +17,9 @@ whisper-settings-home-default =
 
 ## Whisper itself
 
+# The pane's heading already says Whisper; this group is about the program itself.
 whisper-settings-about-group =
-    .label = { -brand-product-name }
+    .label = About { -brand-product-name }
 # Variables:
 #   $version (String): Whisper's version, for example 0.2.0
 #   $firefoxVersion (String): the Firefox version Whisper is built from
