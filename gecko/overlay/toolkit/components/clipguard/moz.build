@@ -39,4 +39,8 @@ SOURCES += [
     "ClipguardEvent.cpp",
 ]
 
+# ClipboardGuard.cpp includes widget/nsBaseClipboard.h, which pulls in IPDL-generated
+# headers (mozilla/dom/PContent.h); this sets up their include paths.
+include("/ipc/chromium/chromium-config.mozbuild")
+
 FINAL_LIBRARY = "xul"
