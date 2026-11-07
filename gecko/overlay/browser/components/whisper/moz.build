@@ -14,6 +14,7 @@
 #   WhisperLayout.sys.mjs   the window layout state (tabs, sidebar mode, toolbar), see README.md
 #   WhisperNewTab.sys.mjs   Whisper's new tab and home page (content/newtab/)
 #   WhisperLoginCrypto.sys.mjs  reads their saved passwords (their own key4.db)
+#   WhisperDarkReader.sys.mjs Dark Reader (shipped in distribution/), kept offline
 #   WhisperQuickOpen.sys.mjs  "+" and Ctrl+T open the address bar in place
 #   WhisperSettings.sys.mjs the Whisper pane of Settings (content/settings/)
 #   WhisperSidebar.sys.mjs  the three tab sidebar modes
@@ -42,6 +43,7 @@ MOZ_SRC_FILES += [
     "WhisperLayout.sys.mjs",
     "WhisperLoginCrypto.sys.mjs",
     "WhisperNewTab.sys.mjs",
+    "WhisperDarkReader.sys.mjs",
     "WhisperQuickOpen.sys.mjs",
     "WhisperSettings.sys.mjs",
     "WhisperSidebar.sys.mjs",

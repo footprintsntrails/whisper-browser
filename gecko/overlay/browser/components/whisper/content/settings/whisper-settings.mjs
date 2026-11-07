@@ -34,7 +34,10 @@ import "chrome://whisper/content/security/settings/whisper-security-settings.mjs
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
+  WhisperDarkReader:
+    "moz-src:///browser/components/whisper/WhisperDarkReader.sys.mjs",
 });
 
 const UBO_ID = "uBlock0@raymondhill.net";
@@ -148,6 +151,34 @@ Preferences.addSetting({
 // --- Pages ----------------------------------------------------------------------------
 
 prefSetting("whisperDrm", "media.eme.enabled");
+
+// Dark Reader is an add-on: its switch is the add-on's own enabled state.
+const DARKREADER_ID = "addon@darkreader.org";
+let darkReader = { installed: false, enabled: false };
+Preferences.addSetting({
+  id: "whisperDarkReader",
+  setup(emitChange) {
+    const refresh = () =>
+      lazy.WhisperDarkReader.state().then(s => {
+        darkReader = s;
+        emitChange();
+      });
+    const listener = {
+      onEnabled: addon => addon.id == DARKREADER_ID && refresh(),
+      onDisabled: addon => addon.id == DARKREADER_ID && refresh(),
+    };
+    lazy.AddonManager.addAddonListener(listener);
+    refresh();
+    return () => lazy.AddonManager.removeAddonListener(listener);
+  },
+  visible: () => darkReader.installed,
+  get: () => darkReader.enabled,
+  set: on => {
+    darkReader = { ...darkReader, enabled: on };
+    lazy.WhisperDarkReader.setEnabled(on);
+    return on;
+  },
+});
 
 // --- Your data ------------------------------------------------------------------------
 
@@ -339,6 +370,11 @@ SettingGroupManager.registerGroups({
     l10nId: "whisper-settings-pages-group",
     headingLevel: 2,
     items: [
+      {
+        id: "whisperDarkReader",
+        l10nId: "whisper-settings-darkreader",
+        control: "moz-toggle",
+      },
       {
         id: "whisperDrm",
         l10nId: "whisper-settings-drm",

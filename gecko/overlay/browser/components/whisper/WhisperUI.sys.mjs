@@ -28,6 +28,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
   WhisperLayout: "moz-src:///browser/components/whisper/WhisperLayout.sys.mjs",
   WhisperNewTab: "moz-src:///browser/components/whisper/WhisperNewTab.sys.mjs",
+  WhisperDarkReader:
+    "moz-src:///browser/components/whisper/WhisperDarkReader.sys.mjs",
   WhisperQuickOpen:
     "moz-src:///browser/components/whisper/WhisperQuickOpen.sys.mjs",
   WhisperSettings:
@@ -77,6 +79,7 @@ export const WhisperUI = {
     guarded("toolbar layout", () => lazy.WhisperToolbar.init());
     guarded("new tab page", () => lazy.WhisperNewTab.init());
     guarded("settings pane", () => lazy.WhisperSettings.init());
+    guarded("Dark Reader offline", () => lazy.WhisperDarkReader.init());
   },
 
   /** Before the window's first layout: styles must be in place before anything paints. */

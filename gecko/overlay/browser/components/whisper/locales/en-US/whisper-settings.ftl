@@ -114,6 +114,9 @@ whisper-settings-restart =
 
 whisper-settings-pages-group =
     .label = Pages
+whisper-settings-darkreader =
+    .label = Dark pages for sites without a dark design
+    .description = Sites with their own dark design use it. The others are recoloured by Dark Reader, an open-source add-on that comes with { -brand-short-name } and fetches nothing: no news, no site fixes. It reads the pages it recolours, as any recolouring tool must, and stays out of container tabs.
 whisper-settings-drm =
     .label = Play DRM-protected video and music
     .description = Netflix, Spotify and similar services. Google’s Widevine module is downloaded from Google once and runs in a sandbox. Off: those services won’t play.

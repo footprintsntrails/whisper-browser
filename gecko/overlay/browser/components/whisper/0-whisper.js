@@ -183,7 +183,10 @@ pref("extensions.getAddons.cache.enabled", false);
 // The add-ons Whisper ships update with Whisper only: no update check at
 // addons.mozilla.org asks for them (patches/0035). Add-ons you install update as in
 // Firefox.
-pref("whisper.extensions.pinned", "uBlock0@raymondhill.net", locked);
+pref("whisper.extensions.pinned", "uBlock0@raymondhill.net,addon@darkreader.org", locked);
+// Dark Reader recolours pages in normal tabs only, not in container tabs, which later
+// carry Whisper's masks (patches/0038; WhisperDarkReader.sys.mjs keeps it offline).
+pref("whisper.extensions.defaultContainerOnly", "addon@darkreader.org");
 
 // --- First start: no welcome tour, no terms dialog, no default-browser question -----
 pref("browser.aboutwelcome.enabled", false);

@@ -26,6 +26,8 @@ gecko="$repo/gecko"
 . "$gecko/firefox.env"
 # shellcheck source=gecko/ubo.env
 . "$gecko/ubo.env"
+# shellcheck source=gecko/darkreader.env
+. "$gecko/darkreader.env"
 # shellcheck source=gecko/release.env
 . "$gecko/release.env"
 
@@ -43,6 +45,9 @@ esac
 [ -f "$gecko/mozconfigs/$target" ] || { echo "unknown target $target" >&2; exit 1; }
 echo "$FIREFOX_SOURCE_SHA512  $tarball" | sha512sum -c --quiet -
 echo "$UBO_SHA256  $ubo" | sha256sum -c --quiet -
+# Dark Reader comes from the same folder (gecko/scripts/fetch-ubo.sh fetches both).
+darkreader="$(dirname -- "$ubo")/$DARKREADER_ID.xpi"
+echo "$DARKREADER_SHA256  $darkreader" | sha256sum -c --quiet -
 
 # SRC is a new folder (prepare.sh makes it) in an existing one. Every file this script
 # writes goes inside it, so it is checked hard: not empty, not "/", not there yet, its
@@ -168,6 +173,7 @@ cp "$art/sidebar.bmp" "$branding/wizWatermark.bmp"
 # uBlock Origin, unchanged, as a distribution add-on.
 mkdir -p "$whisper/distribution"
 cp "$ubo" "$whisper/distribution/$UBO_ID.xpi"
+cp "$darkreader" "$whisper/distribution/$DARKREADER_ID.xpi"
 
 # The updater trusts exactly these certificates (patches/0020: release builds the
 # primary and secondary ones, canary builds the canary one); any other file here would

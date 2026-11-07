@@ -312,6 +312,26 @@ out.afterCtrlTEsc = state();
 return out;
 """
 
+DARKREADER_JS = r"""
+// Dark Reader (WhisperDarkReader.sys.mjs): installed from distribution/ and on, pinned,
+// out of container tabs, and offline: what it tried to fetch was stopped, and its help
+// tab was closed again.
+const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+const { WhisperDarkReader } = ChromeUtils.importESModule("moz-src:///browser/components/whisper/WhisperDarkReader.sys.mjs");
+const addon = await AddonManager.getAddonByID("addon@darkreader.org");
+const tabs = [];
+for (const win of Services.wm.getEnumerator("navigator:browser")) {
+  tabs.push(...win.gBrowser.tabs.map(t => t.linkedBrowser.currentURI.spec));
+}
+return {
+  installed: !!addon, active: !!addon?.isActive, version: addon?.version ?? null,
+  pinned: Services.prefs.getStringPref("whisper.extensions.pinned").split(",").includes("addon@darkreader.org"),
+  containers: Services.prefs.getStringPref("whisper.extensions.defaultContainerOnly", ""),
+  blocked: WhisperDarkReader.blocked,
+  helpTab: tabs.some(u => u.includes("darkreader.org")),
+};
+"""
+
 RELOAD_JS = r"""
 // Clicks the toolbar's reload button and checks that the page loaded again.
 const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -1189,6 +1209,15 @@ def main():
 
         page = site.url("page.html")
         report.check("a local test page loads", m.run(LOAD_JS, page) == page, page)
+        dr = m.run(DARKREADER_JS)
+        report.facts["darkreader"] = dr
+        dr_version = read_env("darkreader.env")["DARKREADER_VERSION"]
+        report.check(f"Dark Reader {dr_version} is installed and on, pinned, and kept out of container tabs",
+                     dr["installed"] and dr["active"] and dr["version"] == dr_version and dr["pinned"]
+                     and dr["containers"] == "addon@darkreader.org", dr)
+        report.check("Dark Reader fetches nothing: its requests were stopped and its help tab closed",
+                     all(re.match(r"https://(darkreader\.org|raw\.githubusercontent\.com/darkreader)/", u)
+                         or u.startswith(site.url("")) for u in dr["blocked"]) and not dr["helpTab"], dr)
         plus_page = site.url("probe.html")
         plus = m.run(PLUS_JS, plus_page)
         report.facts["plus"] = plus

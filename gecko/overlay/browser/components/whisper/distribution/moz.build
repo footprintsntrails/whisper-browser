@@ -2,14 +2,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# uBlock Origin as signed by addons.mozilla.org, copied here by
-# gecko/scripts/prepare.sh after checking its SHA-256 (gecko/ubo.env). Firefox installs
-# add-ons from <install dir>/distribution/extensions/ into a new profile and enables
-# them, without going online.
+# uBlock Origin and Dark Reader as signed by addons.mozilla.org, copied here by
+# gecko/scripts/prepare.sh after checking their SHA-256 (gecko/ubo.env,
+# gecko/darkreader.env). Firefox installs add-ons from <install dir>/distribution/
+# extensions/ into a new profile and enables them, without going online.
 
 # The distribution folder sits next to the executable, not in browser/.
 DIST_SUBDIR = ""
 
 FINAL_TARGET_FILES.distribution.extensions += [
     "uBlock0@raymondhill.net.xpi",
+    "addon@darkreader.org.xpi",
 ]
