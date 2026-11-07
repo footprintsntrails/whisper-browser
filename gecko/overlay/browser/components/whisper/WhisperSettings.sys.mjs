@@ -56,7 +56,8 @@ const GROUPS = [
 // Navigation entries that Whisper's pane replaces or that speak for Mozilla. They get
 // Firefox's own "hidden-category" class, which keeps links to them working.
 const MOVED = ["category-about-firefox", "category-sync", "category-experimental"];
-const DROPPED = ["helpButton", "category-more-from-mozilla"];
+// AI controls: Whisper has no AI features (0-whisper.js locks them off).
+const DROPPED = ["helpButton", "category-more-from-mozilla", "category-ai-features"];
 
 // Firefox strings that name Firefox's own pages, and Whisper's words for them.
 const RELABEL = {

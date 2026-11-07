@@ -332,6 +332,49 @@ return {
 };
 """
 
+AI_PREFS_JS = r"""
+// No AI features and no Translations (0-whisper.js): Firefox's own switches, locked.
+const want = {
+  "browser.ai.control.default": "blocked", "browser.ai.control.sidebarChatbot": "blocked",
+  "browser.ai.control.smartTabGroups": "blocked", "browser.ai.control.linkPreviewKeyPoints": "blocked",
+  "browser.ai.control.smartWindow": "blocked", "browser.ai.control.translations": "blocked",
+  "browser.ml.enable": false, "extensions.ml.enabled": false, "browser.ml.chat.enabled": false,
+  "browser.ml.chat.menu": false, "browser.ml.linkPreview.enabled": false,
+  "browser.tabs.groups.smart.enabled": false, "browser.smartwindow.enabled": false,
+  "pdfjs.enableAltText": false, "browser.translations.enable": false,
+  "browser.translations.select.enable": false, "browser.preferences.aiControls": false,
+};
+const wrong = {};
+for (const [name, value] of Object.entries(want)) {
+  const type = Services.prefs.getPrefType(name);
+  const got = type == Services.prefs.PREF_BOOL ? Services.prefs.getBoolPref(name)
+    : type == Services.prefs.PREF_STRING ? Services.prefs.getStringPref(name) : null;
+  if (got !== value || !Services.prefs.prefIsLocked(name)) {
+    wrong[name] = [got, Services.prefs.prefIsLocked(name)];
+  }
+}
+const button = document.getElementById("translations-button");
+return { wrong, translationsButton: !!button && button.checkVisibility(),
+  sidebarTools: Services.prefs.getStringPref("sidebar.main.tools", "") };
+"""
+
+CONTEXT_MENU_POS_JS = r"""
+// Where to right-click on the page; the menu reports itself when it opens.
+const b = gBrowser.selectedBrowser.getBoundingClientRect();
+const menu = document.getElementById("contentAreaContextMenu");
+window.whisperMenuShown = new Promise(r => menu.addEventListener("popupshown", r, { once: true }));
+return { x: Math.round(window.mozInnerScreenX + b.left + 200), y: Math.round(window.mozInnerScreenY + b.top + 60) };
+"""
+
+CONTEXT_MENU_READ_JS = r"""
+await Promise.race([window.whisperMenuShown, new Promise(r => setTimeout(r, 3000))]);
+const menu = document.getElementById("contentAreaContextMenu");
+const visible = [...menu.children].filter(e => e.localName != "menuseparator" && e.checkVisibility()).map(e => e.id);
+const opened = menu.state == "open";
+menu.hidePopup();
+return { opened, visible };
+"""
+
 RELOAD_JS = r"""
 // Clicks the toolbar's reload button and checks that the page loaded again.
 const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -1128,7 +1171,7 @@ def main():
                      <= set(settings["groups"]), settings["groups"])
         report.check("Settings have no Mozilla help link and no About Firefox, Account and sync or Labs entry",
                      not settings["helpButton"] and not {"paneAbout", "paneSync", "paneExperimental",
-                                                         "paneMoreFromMozilla"} & set(settings["nav"]),
+                                                         "paneMoreFromMozilla", "paneAi"} & set(settings["nav"]),
                      settings["nav"])
         report.check("secure DNS is strict, and the page Firefox opens when it fails offers the network's DNS "
                      "until restart", settings["trrMode"] == 3 and settings["dnsFallbackShown"]
@@ -1218,6 +1261,25 @@ def main():
         report.check("Dark Reader fetches nothing: its requests were stopped and its help tab closed",
                      all(re.match(r"https://(darkreader\.org|raw\.githubusercontent\.com/darkreader)/", u)
                          or u.startswith(site.url("")) for u in dr["blocked"]) and not dr["helpTab"], dr)
+        ai = m.run(AI_PREFS_JS)
+        report.facts["ai"] = ai
+        report.check("every AI feature and Translations are off and locked; no translate button, no AI chatbot",
+                     not ai["wrong"] and not ai["translationsButton"] and "aichat" not in ai["sidebarTools"], ai)
+        xdotool = shutil.which("xdotool") if os.environ.get("DISPLAY") else None
+        if xdotool:  # a real right-click; without xdotool this check is left out
+            m.command("Marionette:SetContext", {"value": "content"})
+            try:
+                m.run("window.getSelection().selectAllChildren(document.body); return 1;")
+            finally:
+                m.command("Marionette:SetContext", {"value": "chrome"})
+            pos = m.run(CONTEXT_MENU_POS_JS)
+            subprocess.run([xdotool, "mousemove", str(pos["x"]), str(pos["y"]), "click", "3"],
+                           check=False, timeout=10)
+            menu = m.run(CONTEXT_MENU_READ_JS)
+            report.facts["page_context_menu"] = menu
+            ai_items = {"context-ask-chat", "context-translate-selection", "context-openlinksmartwindow"}
+            report.check("the page's context menu with a selection has no AI or Translate item",
+                         menu["opened"] and not ai_items & set(menu["visible"]), menu)
         plus_page = site.url("probe.html")
         plus = m.run(PLUS_JS, plus_page)
         report.facts["plus"] = plus

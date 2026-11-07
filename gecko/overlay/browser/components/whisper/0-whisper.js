@@ -114,16 +114,6 @@ pref("browser.urlbar.trimHttps", true);
 pref("browser.urlbar.untrimOnUserInteraction.featureGate", true);
 pref("browser.urlbar.searchRestrictKeywords.featureGate", true);
 
-// --- AI features: blocked by default (Settings > AI controls turns them back on) ----
-// Translations stay available: they run on this device and only download a language
-// model when you translate a page.
-pref("browser.ai.control.default", "blocked");
-pref("browser.ai.control.translations", "available");
-pref("browser.ml.chat.enabled", false);
-pref("browser.ml.linkPreview.enabled", false);
-pref("browser.tabs.groups.smart.userEnabled", false);
-pref("pdfjs.enableAltText", false);
-
 // --- Tracking protection ------------------------------------------------------------
 pref("browser.contentblocking.category", "strict");
 pref("privacy.globalprivacycontrol.enabled", true);
@@ -224,6 +214,54 @@ pref("whisper.sidebar.mode", "expanded");
 // "+" and Ctrl+T open the address bar where it is; Enter opens the result in a new tab,
 // Esc leaves no tab behind (WhisperQuickOpen.sys.mjs). false: they open a new tab page.
 pref("whisper.newtab.addressBar", true);
+
+// --- No AI features and no translations, locked (the owner's decision) --------------
+// Firefox's own switch first: every AI feature blocked, as "Block AI" in Firefox's AI
+// controls would set it; that pane is gone from Settings (WhisperSettings.sys.mjs).
+pref("browser.preferences.aiControls", false, locked);
+pref("browser.ai.control.default", "blocked", locked);
+pref("browser.ai.control.translations", "blocked", locked);
+pref("browser.ai.control.pdfjsAltText", "blocked", locked);
+pref("browser.ai.control.smartTabGroups", "blocked", locked);
+pref("browser.ai.control.linkPreviewKeyPoints", "blocked", locked);
+pref("browser.ai.control.speechRecognition", "blocked", locked);
+pref("browser.ai.control.sidebarChatbot", "blocked", locked);
+pref("browser.ai.control.smartWindow", "blocked", locked);
+// ... and each feature's own switch: the machine-learning engine and the model hub
+pref("browser.ml.enable", false, locked);
+pref("browser.ml.modelHubRootUrl", "", locked);
+pref("extensions.ml.enabled", false, locked);
+// AI chatbot: sidebar, "Ask an AI chatbot" menus, shortcuts on selected text
+pref("browser.ml.chat.enabled", false, locked);
+pref("browser.ml.chat.menu", false, locked);
+pref("browser.ml.chat.page", false, locked);
+pref("browser.ml.chat.shortcuts", false, locked);
+pref("browser.ml.chat.sidebar", false, locked);
+pref("browser.ml.chat.provider", "", locked);
+// Link previews with AI key points, page assist
+pref("browser.ml.linkPreview.enabled", false, locked);
+pref("browser.ml.pageAssist.enabled", false, locked);
+// Smart tab groups (suggested tabs and names)
+pref("browser.tabs.groups.smart.enabled", false, locked);
+pref("browser.tabs.groups.smart.userEnabled", false, locked);
+// Smart window (Firefox's AI window) and its agent, form fill and tab grouping
+pref("browser.smartwindow.enabled", false, locked);
+pref("browser.smartwindow.isDefaultWindow", false, locked);
+pref("browser.smartwindow.agent.enabled", false, locked);
+pref("browser.smartwindow.smartformfill.enabled", false, locked);
+pref("browser.smartwindow.autoTabGrouping.enabled", false, locked);
+pref("browser.smartwindow.autoTabGrouping.preloadModels", false, locked);
+pref("browser.smartwindow.endpoint", "", locked);
+// PDF viewer: no AI alt text for images, no model download for it
+pref("pdfjs.enableAltText", false, locked);
+pref("pdfjs.enableGuessAltText", false, locked);
+pref("pdfjs.enableAltTextModelDownload", false, locked);
+// Translations: no translate button, no "Translate selection", no about:translations,
+// no language models downloaded (one place to turn them back on if it is ever wanted)
+pref("browser.translations.enable", false, locked);
+pref("browser.translations.select.enable", false, locked);
+pref("browser.translations.automaticallyPopup", false, locked);
+pref("browser.translations.quickAction.enabled", false, locked);
 
 // --- Settings (WhisperSettings.sys.mjs): Whisper's pane, Mozilla's offers out --------
 // Firefox Relay (Mozilla's email masks) is not offered when you save a password.
