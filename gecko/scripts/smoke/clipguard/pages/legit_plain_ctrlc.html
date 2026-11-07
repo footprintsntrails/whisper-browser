@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Plain Ctrl+C of visible text</title>
+<script src="common.js"></script></head>
+<body><h1>Plain Ctrl+C of visible text</h1>
+<p id="sel">git clone https://github.com/footprintsntrails/whisper-browser.git</p>
+<script>window.addEventListener("load",()=>{const r=document.createRange();r.selectNodeContents(document.getElementById("sel"));const s=getSelection();s.removeAllRanges();s.addRange(r);});</script>
+</body></html>

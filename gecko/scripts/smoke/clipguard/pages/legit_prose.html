@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Plain prose copy</title>
+<script src="common.js"></script></head>
+<body><h1>Plain prose copy</h1>
+<p id="sel">Hello, world! This is ordinary text copied from a blog post.</p>
+<button id="go">Copy</button>
+<script>document.getElementById("go").addEventListener("click",()=>window.__clipguard.writeText(document.getElementById("sel").textContent));</script>
+</body></html>
