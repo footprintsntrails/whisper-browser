@@ -70,8 +70,24 @@ pref("browser.uitour.enabled", false);
 // Mozilla's VPN offer inside the browser
 pref("browser.ipProtection.enabled", false);
 
-// --- New tab: quiet, no stories, no weather, no shortcuts from Mozilla --------------
-// The page keeps the search box and the Whisper logo and name.
+// --- New tab: Whisper's own page, and Firefox's new tab quiet behind it -------------
+// Whisper's new tab and home page (WhisperNewTab.sys.mjs) is a local page that makes
+// no request. Firefox's new tab code still starts in the background; these keep it
+// from fetching anything: no stories, weather, sponsored or recommended shortcuts,
+// messages, widgets, remote layouts or site icons.
+pref("browser.startup.homepage", "chrome://whisper/content/newtab/newtab.html");
+pref("browser.newtabpage.activity-stream.feeds.system.topsites", false);
+pref("browser.newtabpage.activity-stream.feeds.favicon", false);
+pref("browser.newtabpage.activity-stream.asrouter.useRemoteL10n", false);
+pref("browser.newtabpage.activity-stream.asrouter.devtoolsEnabled", false);
+pref("browser.newtabpage.activity-stream.remote-renderer.enabled", false);
+pref("browser.newtabpage.activity-stream.widgets.system.pictureOfTheDay.enabled", false);
+pref("browser.newtabpage.activity-stream.widgets.system.crossword.enabled", false);
+pref("browser.newtabpage.trainhopAddon.xpiBaseURL", "");
+pref("browser.topsites.useRemoteSetting", false);
+// Firefox's in-browser messages (feature tips, promotions) from Remote Settings
+pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "{\"id\":\"cfr\",\"enabled\":false,\"type\":\"remote-settings\",\"collection\":\"cfr\",\"updateCycleInMs\":3600000}");
+pref("browser.newtabpage.activity-stream.asrouter.providers.message-groups", "{\"id\":\"message-groups\",\"enabled\":false,\"type\":\"remote-settings\",\"collection\":\"message-groups\",\"updateCycleInMs\":3600000}");
 pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
 pref("browser.newtabpage.activity-stream.feeds.topsites", false);
 pref("browser.newtabpage.activity-stream.default.sites", "");

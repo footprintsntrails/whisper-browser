@@ -1,0 +1,270 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Whisper's new tab page: Cast black with the window's space colour mixed in, the
+ * cast-metal grain, the Whisper mark, the search field and the user's own sites.
+ * Nothing moves while the page sits idle. */
+
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; }
+
+:root {
+  --space: #111316;
+  --text: #e6eaee;
+  --muted: #8e98a3;
+  --field: rgb(211 217 223 / 0.08);
+  --field-hover: rgb(211 217 223 / 0.11);
+  --line: rgb(211 217 223 / 0.12);
+  --focus: #a7c7e7;
+  color-scheme: dark;
+  font-family: "Whisper Inter", system-ui, sans-serif;
+  color: var(--text);
+  background:
+    url("chrome://whisper/content/grain.png"),
+    color-mix(in srgb, var(--space) 13%, #111316);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px 72px;
+}
+
+/* The mark: the hush face tile and the name, one unit */
+#lockup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+#logo {
+  inline-size: 60px;
+  block-size: 60px;
+}
+#wordmark {
+  font-size: 36px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* The search field: hands over to the address bar */
+#search {
+  margin-block-start: 30px;
+  inline-size: min(520px, 82vw);
+  block-size: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-inline: 16px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--muted);
+  font: inherit;
+  font-size: 15px;
+  text-align: start;
+  cursor: text;
+}
+#search:hover {
+  background: var(--field-hover);
+}
+#search:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+#search-icon {
+  inline-size: 16px;
+  block-size: 16px;
+  background: url("chrome://global/skin/icons/search-glass.svg") center / 16px no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--muted);
+}
+#search-placeholder {
+  flex: 1;
+}
+#search-key {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+/* The user's own sites */
+#sites {
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(6, 52px);
+  column-gap: 14px;
+  row-gap: 16px;
+  justify-content: center;
+}
+.site {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  inline-size: 52px;
+}
+.site-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 14px;
+}
+.site-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.site-tile {
+  inline-size: 52px;
+  block-size: 52px;
+  border-radius: 14px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+}
+.site-link:hover .site-tile {
+  background: var(--field-hover);
+}
+.site-icon {
+  inline-size: 24px;
+  block-size: 24px;
+}
+/* A site without an icon: its monogram, as on its tabs, at tile size */
+.site-mono {
+  inline-size: 28px;
+  block-size: 28px;
+  border-radius: 8px;
+  background: oklch(40% 0.045 var(--hue));
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 28px;
+  text-align: center;
+}
+.site-name {
+  font-size: 11px;
+  color: var(--muted);
+  max-inline-size: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-remove {
+  position: absolute;
+  inset-block-start: -6px;
+  inset-inline-end: -6px;
+  inline-size: 20px;
+  block-size: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #23282d url("chrome://global/skin/icons/close.svg") center / 10px no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--text);
+  opacity: 0;
+}
+.site:is(:hover, :focus-within) .site-remove {
+  opacity: 1;
+}
+.site.dragging {
+  opacity: 0.4;
+}
+.site-add .site-tile {
+  background: transparent url("chrome://global/skin/icons/plus.svg") center / 16px no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--muted);
+}
+.site-add button {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border-radius: 14px;
+}
+.site-add button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+#add-form {
+  margin-block-start: 18px;
+  display: flex;
+  gap: 8px;
+}
+#add-form[hidden] {
+  display: none;
+}
+#add-form input {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+#add-form button {
+  font: inherit;
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  background: var(--field);
+  color: var(--text);
+}
+#add-save {
+  background: #d3d9df !important;
+  color: #111316 !important;
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px 16px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+#space {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The space's colour chip, the same 8 px rounded square as a tab group's */
+#space-chip {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 2.5px;
+  background: color-mix(in srgb, var(--space) 70%, #d3d9df);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .site-remove,
+  .site-tile,
+  #search {
+    transition: opacity 120ms ease, background-color 120ms ease;
+  }
+}

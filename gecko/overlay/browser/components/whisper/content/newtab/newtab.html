@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Whisper's new tab and home page (WhisperNewTab.sys.mjs). Local files only: it makes
+     no network request; site icons come from the browser's own icon cache. -->
+<html dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome:; img-src chrome: page-icon:; style-src chrome:; script-src chrome:; object-src 'none'">
+  <meta name="color-scheme" content="dark">
+  <title data-l10n-id="whisper-newtab-title"></title>
+  <link rel="localization" href="branding/brand.ftl">
+  <link rel="localization" href="whisper/whisper-newtab.ftl">
+  <link rel="icon" href="chrome://branding/content/icon32.png">
+  <link rel="stylesheet" href="chrome://whisper/content/newtab/newtab.css">
+  <script type="module" src="chrome://whisper/content/newtab/newtab.mjs"></script>
+</head>
+<body>
+  <main id="center">
+    <div id="lockup" role="img" data-l10n-id="whisper-newtab-logo">
+      <img id="logo" src="chrome://whisper/content/newtab/logo-tile.svg" alt="">
+      <span id="wordmark" data-l10n-id="whisper-newtab-wordmark"></span>
+    </div>
+    <button id="search" type="button" data-l10n-id="whisper-newtab-search">
+      <span id="search-icon"></span>
+      <span id="search-placeholder" data-l10n-id="whisper-newtab-search-placeholder"></span>
+      <kbd id="search-key" data-l10n-id="whisper-newtab-search-key"></kbd>
+    </button>
+    <ul id="sites" data-l10n-id="whisper-newtab-sites"></ul>
+    <form id="add-form" hidden>
+      <input id="add-url" type="url" required data-l10n-id="whisper-newtab-add-url">
+      <input id="add-name" type="text" data-l10n-id="whisper-newtab-add-name">
+      <button id="add-save" type="submit" data-l10n-id="whisper-newtab-add-save"></button>
+      <button id="add-cancel" type="button" data-l10n-id="whisper-newtab-add-cancel"></button>
+    </form>
+  </main>
+  <footer>
+    <div id="space"><span id="space-chip"></span><span id="space-name" data-l10n-id="whisper-newtab-space-default"></span></div>
+    <!-- Filled later by the "hush strip" work: what was blocked, who tracked. -->
+    <div id="hush-slot" hidden></div>
+  </footer>
+</body>
+</html>

@@ -12,6 +12,7 @@
 #   WhisperAbout.sys.mjs    the about dialog: Whisper's version, based on Firefox's
 #   WhisperImport.sys.mjs   import from Firefox, Zen, LibreWolf, Floorp and Waterfox
 #   WhisperLayout.sys.mjs   the window layout state (tabs, sidebar mode, toolbar), see README.md
+#   WhisperNewTab.sys.mjs   Whisper's new tab and home page (content/newtab/)
 #   WhisperLoginCrypto.sys.mjs  reads their saved passwords (their own key4.db)
 #   WhisperSidebar.sys.mjs  the three tab sidebar modes
 #   WhisperTabIcons.sys.mjs monograms for pages without an icon (tabs, new tab page)
@@ -38,6 +39,7 @@ MOZ_SRC_FILES += [
     "WhisperImport.sys.mjs",
     "WhisperLayout.sys.mjs",
     "WhisperLoginCrypto.sys.mjs",
+    "WhisperNewTab.sys.mjs",
     "WhisperSidebar.sys.mjs",
     "WhisperTabIcons.sys.mjs",
     "WhisperToolbar.sys.mjs",

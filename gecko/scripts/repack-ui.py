@@ -52,6 +52,12 @@ FILES = [
     ("omni.ja", "moz-src/browser/components/whisper/WhisperToolbar.sys.mjs", f"{WHISPER}/WhisperToolbar.sys.mjs"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperUrlbar.sys.mjs", f"{WHISPER}/WhisperUrlbar.sys.mjs"),
     ("browser/omni.ja", "chrome/browser/content/whisper/grain.png", f"{WHISPER}/content/grain.png"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperTabIcons.sys.mjs", f"{WHISPER}/WhisperTabIcons.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperNewTab.sys.mjs", f"{WHISPER}/WhisperNewTab.sys.mjs"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/newtab/newtab.html", f"{WHISPER}/content/newtab/newtab.html"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/newtab/newtab.css", f"{WHISPER}/content/newtab/newtab.css"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/newtab/newtab.mjs", f"{WHISPER}/content/newtab/newtab.mjs"),
+    ("browser/omni.ja", "localization/en-US/whisper/whisper-newtab.ftl", f"{WHISPER}/locales/en-US/whisper-newtab.ftl"),
 ]
 
 

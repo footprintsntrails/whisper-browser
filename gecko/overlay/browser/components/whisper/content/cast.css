@@ -78,14 +78,17 @@
   font-family: "Whisper Inter", system-ui, -apple-system, "Segoe UI", sans-serif !important;
 }
 
-/* Frame: one surface behind everything, in the window's space colour (Cast black by
- * default, WhisperLayout) with the cast-metal grain over it (a still image). */
+/* Frame: one surface behind everything, Cast black tinted with the window's space
+ * colour (WhisperLayout; a fifth of it, so a coloured space stays dark and the page
+ * stays the brightest thing) with the cast-metal grain over it (a still image). */
 #navigator-toolbox, #nav-bar, #TabsToolbar, #titlebar, #browser, #sidebar-container, #sidebar-box {
   background: transparent !important;
   border-color: transparent !important;
 }
 #navigator-toolbox, #browser {
-  background: url("chrome://whisper/content/grain.png"), var(--whisper-space-color) !important;
+  background:
+    url("chrome://whisper/content/grain.png"),
+    color-mix(in srgb, var(--whisper-space-color) 22%, var(--w-black)) !important;
 }
 #navigator-toolbox { border-bottom: none !important; }
 #nav-bar { box-shadow: none !important; }

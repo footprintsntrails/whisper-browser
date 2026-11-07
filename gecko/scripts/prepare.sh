@@ -144,6 +144,13 @@ mkdir -p "$whisper/content/fonts"
 cp "$repo"/assets/fonts/Inter-{Regular,Medium,SemiBold}.woff2 "$repo/assets/fonts/OFL.txt" \
   "$whisper/content/fonts/"
 
+# The Whisper mark on the new tab page: the hush face on its tile (the canary's in its
+# yellow), from the logo sources the icons are rendered from.
+logo_tile="$repo/assets/logo/master-inv.svg"
+if [ "$variant" = canary ]; then logo_tile="$canary/logo/master.svg"; fi
+mkdir -p "$whisper/content/newtab"
+cp "$logo_tile" "$whisper/content/newtab/logo-tile.svg"
+
 # Windows icons and installer artwork come from assets/ (rendered by `cargo xtask icons`
 # and `cargo xtask installer-art`; the canary's from `cargo xtask canary-art`). setup.ico
 # is the installer's and uninstaller's own icon (patches/0030).

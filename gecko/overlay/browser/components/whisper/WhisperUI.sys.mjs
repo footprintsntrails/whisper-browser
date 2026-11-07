@@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
   WhisperLayout: "moz-src:///browser/components/whisper/WhisperLayout.sys.mjs",
+  WhisperNewTab: "moz-src:///browser/components/whisper/WhisperNewTab.sys.mjs",
   WhisperSidebar: "moz-src:///browser/components/whisper/WhisperSidebar.sys.mjs",
   WhisperTabIcons:
     "moz-src:///browser/components/whisper/WhisperTabIcons.sys.mjs",
@@ -72,6 +73,7 @@ export const WhisperUI = {
     guarded("page colours", () => this._registerPageSheet());
     guarded("about dialog", () => this._watchAboutDialog());
     guarded("toolbar layout", () => lazy.WhisperToolbar.init());
+    guarded("new tab page", () => lazy.WhisperNewTab.init());
   },
 
   /** Before the window's first layout: styles must be in place before anything paints. */

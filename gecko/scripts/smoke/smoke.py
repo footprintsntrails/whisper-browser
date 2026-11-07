@@ -512,10 +512,51 @@ return {
   readyState: document.readyState,
   title: document.title,
   bodyElements: document.body ? document.body.querySelectorAll("*").length : -1,
-  hasSearch: !!document.querySelector("input, [role=search], .search-wrapper, content-search-handoff-ui"),
-  hasLogo: !!document.querySelector(".logo-and-wordmark, .logo, .wordmark"),
+  hasSearch: !!document.querySelector("#search, input, [role=search], .search-wrapper, content-search-handoff-ui"),
+  hasLogo: !!document.querySelector("#lockup #logo, .logo-and-wordmark, .logo, .wordmark"),
   background: document.body ? getComputedStyle(document.body).backgroundColor : null,
 };
+"""
+
+NEWTAB_JS = r"""
+// Whisper's new tab page (WhisperNewTab.sys.mjs, content/newtab/): a new tab opens it
+// without a single network request, with the address bar focused and empty, the
+// Whisper mark, the search field and the user's pinned sites (a site without an icon
+// shows its monogram).
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const { NewTabUtils } = ChromeUtils.importESModule("resource://gre/modules/NewTabUtils.sys.mjs");
+const seen = [];
+// Every request, with the browsing context it is for; background work (Remote Settings,
+// uBlock Origin's lists) has none of the new tab's.
+const observer = { observe(subject) { try { const ch = subject.QueryInterface(Ci.nsIChannel); seen.push([ch.URI.spec, ch.loadInfo?.browsingContextID ?? 0]); } catch (e) {} } };
+NewTabUtils.pinnedLinks.pin({ url: "https://en.wikipedia.org/", title: "Wikipedia" }, 0);
+Services.obs.addObserver(observer, "http-on-opening-request");
+const before = gBrowser.tabs.length;
+try {
+  BrowserCommands.openTab();
+  await sleep(2500);
+} finally {
+  Services.obs.removeObserver(observer, "http-on-opening-request");
+}
+const browser = gBrowser.selectedBrowser;
+const doc = browser.contentDocument;
+const out = {
+  opened: gBrowser.tabs.length - before,
+  url: browser.currentURI.spec,
+  newTabURL: AboutNewTab.newTabURL,
+  homepage: Services.prefs.getStringPref("browser.startup.homepage"),
+  urlbarValue: gURLBar.value,
+  urlbarFocused: !!document.activeElement?.closest?.("#urlbar"),
+  requests: seen.filter(([, id]) => id && id == browser.browsingContext?.id).map(([url]) => url),
+  wordmark: doc?.getElementById("wordmark")?.textContent ?? null,
+  search: !!doc?.getElementById("search"),
+  sites: [...(doc?.querySelectorAll("#sites .site:not(.site-add) .site-name") ?? [])].map(e => e.textContent),
+  monogram: doc?.querySelector("#sites .site-mono")?.textContent ?? null,
+  addTile: !!doc?.querySelector("#sites .site-add"),
+};
+NewTabUtils.pinnedLinks.unpin({ url: "https://en.wikipedia.org/" });
+gBrowser.removeTab(gBrowser.selectedTab);
+return out;
 """
 
 ABOUT_JS = r"""
@@ -873,6 +914,17 @@ def main():
         report.facts["start_page"] = page
         report.check("the start page renders (search box and Whisper logo)",
                      isinstance(page, dict) and page.get("hasSearch") and page.get("hasLogo"), page)
+        newtab = m.run(NEWTAB_JS)
+        report.facts["new_tab"] = newtab
+        newtab_url = "chrome://whisper/content/newtab/newtab.html"
+        report.check("a new tab opens Whisper's page (also the home page) without any network request",
+                     newtab["opened"] == 1 and newtab["url"] == newtab_url and newtab["newTabURL"] == newtab_url
+                     and newtab["homepage"] == newtab_url and not newtab["requests"], newtab)
+        report.check("the new tab page has the address bar focused and empty, the Whisper mark, the search "
+                     "field and the pinned sites (a monogram for a site without an icon)",
+                     newtab["urlbarFocused"] and newtab["urlbarValue"] == "" and newtab["wordmark"] == "Whisper"
+                     and newtab["search"] and newtab["sites"] == ["Wikipedia"] and newtab["monogram"] == "W"
+                     and newtab["addTile"], newtab)
         search = m.run(SEARCH_JS)
         report.facts["search"] = search
         codes = re.compile(r"[?&](t|client|pc|form|sourceid|campid)=|firefox|mozilla|ffab", re.I)
