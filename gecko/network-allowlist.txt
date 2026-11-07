@@ -21,9 +21,6 @@ update.googleapis.com
 edgedl.me.gvt1.com
 www.google.com
 
-# Add-on update checks (allowed for now)
-versioncheck-bg.addons.mozilla.org
-
 # Whisper's own updates (gecko/release.env). The update check asks GitHub Pages for
 # update.xml; only when an update is offered does the browser download its MAR from
 # the GitHub release, which redirects to GitHub's download host. GitHub sees the IP

@@ -154,6 +154,10 @@ pref("media.gmp-manager.url", "data:,", locked);
 pref("dom.push.connection.enabled", false);
 // Add-on details are fetched from addons.mozilla.org only when you open them
 pref("extensions.getAddons.cache.enabled", false);
+// The add-ons Whisper ships update with Whisper only: no update check at
+// addons.mozilla.org asks for them (patches/0035). Add-ons you install update as in
+// Firefox.
+pref("whisper.extensions.pinned", "uBlock0@raymondhill.net", locked);
 
 // --- First start: no welcome tour, no terms dialog, no default-browser question -----
 pref("browser.aboutwelcome.enabled", false);

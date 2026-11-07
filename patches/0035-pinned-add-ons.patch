@@ -1,0 +1,35 @@
+Whisper: the add-ons Whisper ships are never checked for updates at addons.mozilla.org
+
+What: an add-on update check (the daily background check, the check when an add-on
+is installed, after an application update or when the user asks) for an add-on
+named in the pref whisper.extensions.pinned ends at once as a check that found no
+update, without a request.
+Why: Whisper ships uBlock Origin (and later more add-ons) pinned to a version and a
+SHA-256 (gecko/ubo.env) and updates them only with Whisper builds. Firefox's check
+asked versioncheck-bg.addons.mozilla.org about each one every day and on the first
+start, telling Mozilla which add-ons the profile has. Add-ons the user installs
+still update as in Firefox.
+---
+--- a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
++++ b/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
+@@ -3175,6 +3175,20 @@
+     aReason == AddonManager.UPDATE_WHEN_NEW_APP_INSTALLED;
+   this.isUserRequested = aReason == AddonManager.UPDATE_WHEN_USER_REQUESTED;
+ 
++  // Whisper: the add-ons Whisper ships (whisper.extensions.pinned) update with
++  // Whisper only, never from addons.mozilla.org: no update check asks for them
++  // (patches/0035-pinned-add-ons.patch). The check ends as one that found nothing.
++  if (
++    Services.prefs
++      .getStringPref("whisper.extensions.pinned", "")
++      .split(",")
++      .includes(aAddon.id)
++  ) {
++    this._parser = { cancel() {} };
++    Services.tm.dispatchToMainThread(() => this.onUpdateCheckComplete([]));
++    return;
++  }
++
+   // If bug 2032469 changes the policy behavior, this will need to be updated.
+   let updateURL =
+     Services.policies?.getExtensionSettings(aAddon.id)?.update_url?.href ||
