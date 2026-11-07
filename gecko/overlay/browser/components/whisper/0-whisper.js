@@ -169,6 +169,11 @@ pref("extensions.systemAddon.update.url", "", locked);
 pref("media.eme.enabled", false);
 pref("media.gmp-gmpopenh264.enabled", false);
 pref("media.gmp-manager.url", "data:,", locked);
+// With the URL above, Firefox falls back to its built-in source lists and downloads
+// OpenH264 (ciscobinary.openh264.org) and Widevine (update.googleapis.com) on the first
+// start anyway. No plugin check at all until the person turns on DRM or OpenH264 in
+// Settings; WhisperUI keeps this in step with those two switches.
+pref("media.gmp-manager.updateEnabled", false);
 // Web push: no permanent connection to Mozilla's push server
 // (push.services.mozilla.com). Sites cannot send notifications while they are closed.
 pref("dom.push.connection.enabled", false);

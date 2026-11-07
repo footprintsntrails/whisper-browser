@@ -80,6 +80,26 @@ export const WhisperUI = {
     guarded("new tab page", () => lazy.WhisperNewTab.init());
     guarded("settings pane", () => lazy.WhisperSettings.init());
     guarded("Dark Reader offline", () => lazy.WhisperDarkReader.init());
+    guarded("media plugin consent", () => this._syncMediaPluginUpdates());
+  },
+
+  /**
+   * Media plugins (Widevine, OpenH264) are only checked for and downloaded once the
+   * person has turned on DRM or OpenH264 in Settings. Firefox would otherwise fetch them
+   * on the first start from its built-in source lists.
+   */
+  _syncMediaPluginUpdates() {
+    const consent = ["media.eme.enabled", "media.gmp-gmpopenh264.enabled"];
+    const sync = () => {
+      const wanted = consent.some(p => Services.prefs.getBoolPref(p, false));
+      if (Services.prefs.getBoolPref("media.gmp-manager.updateEnabled", false) != wanted) {
+        Services.prefs.setBoolPref("media.gmp-manager.updateEnabled", wanted);
+      }
+    };
+    sync();
+    for (const p of consent) {
+      Services.prefs.addObserver(p, sync);
+    }
   },
 
   /** Before the window's first layout: styles must be in place before anything paints. */
