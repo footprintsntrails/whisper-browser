@@ -15,3 +15,30 @@
     background-color: #111316 !important;
   }
 }
+
+/* Firefox's error pages (a site that cannot be reached, secure DNS that failed, a
+ * certificate problem): Cast colours through Firefox's design tokens, platinum
+ * buttons instead of violet. A web page cannot read an error page, even in its own
+ * frame. */
+@-moz-document url-prefix("about:neterror"), url-prefix("about:certerror") {
+  :root {
+    --background-color-canvas: #111316 !important;
+    --background-color-box: #1b1f23 !important;
+    --border-color: #2a2f35 !important;
+    --text-color: #d3d9df !important;
+    --text-color-deemphasized: #8e98a3 !important;
+    --color-accent-primary: #a7c7e7 !important;
+    --link-color: #a7c7e7 !important;
+    --link-color-hover: #cfe1f3 !important;
+    --focus-outline-color: #a7c7e7 !important;
+    --button-background-color-primary: #d3d9df !important;
+    --button-background-color-primary-hover: #eef1f4 !important;
+    --button-background-color-primary-active: #ffffff !important;
+    --button-text-color-primary: #111316 !important;
+    --button-background-color: #23282d !important;
+    --button-background-color-hover: #2b3137 !important;
+    --button-border-color: #2a2f35 !important;
+    --border-radius-medium: 8px !important;
+    color-scheme: dark !important;
+  }
+}
