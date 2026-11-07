@@ -124,11 +124,11 @@ pref("browser.safebrowsing.downloads.remote.enabled", false);
 pref("browser.safebrowsing.blockedURIs.enabled", false);
 
 // --- Background connections nobody asked for: off -----------------------------------
-pref("network.prefetch-next", false);
-pref("network.dns.disablePrefetch", true);
-pref("network.dns.disablePrefetchFromHTTPS", true);
-pref("network.predictor.enabled", false);
-pref("network.http.speculative-parallel-limit", 0);
+// Link prefetching, DNS prefetching and connections opened ahead to a link the pointer
+// is on keep Firefox's values: they only reach hosts the page itself names, and a page
+// can measure whether they happen, so turning them off would set Whisper apart.
+// Connections the address bar opens ahead while you type are off: those follow what
+// you type, and no page can see them.
 pref("browser.places.speculativeConnect.enabled", false);
 pref("browser.urlbar.speculativeConnect.enabled", false);
 pref("network.captive-portal-service.enabled", false);
