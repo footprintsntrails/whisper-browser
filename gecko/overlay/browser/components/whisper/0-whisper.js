@@ -152,8 +152,9 @@ pref("termsofuse.bypassNotification", true);
 pref("browser.startup.homepage_override.mstone", "ignore");
 pref("browser.shell.checkDefaultBrowser", false);
 pref("browser.aboutConfig.showWarning", false);
-// The alternative app icons Firefox offers in Settings are Firefox logos.
-pref("browser.shell.customIcon.enabled", false);
+// The alternative app icons Firefox offers in Settings are Firefox logos (whisper.exe
+// carries Whisper's icon in their place, patches/0030).
+pref("browser.shell.customIcon.enabled", false, locked);
 // No Mozilla account button in the toolbar (Sync stays available in Settings)
 pref("identity.fxaccounts.toolbar.defaultVisible", false);
 

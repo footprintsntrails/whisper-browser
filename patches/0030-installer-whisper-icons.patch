@@ -1,0 +1,111 @@
+Whisper: the installer, uninstaller and updater show Whisper's icon, not Firefox's
+
+What: (1) the installer's and uninstaller's own icon (setup.ico, used by installer.nsi
+and uninstaller.nsi as MUI_ICON) is taken from the branding folder instead of
+toolkit/mozapps/installer/windows/nsis/; (2) the self-extracting installer
+(Whisper-Setup.exe) starts with the 7-Zip self-extractor from the branding folder, a
+copy of Firefox's other-licenses/7zstub/firefox/7zSD.Win32.sfx with Whisper's icon and
+file details that gecko/scripts/prepare.sh makes (gecko/scripts/winres.py), and its
+title (app.tag) comes from the branding folder; (3) the eight alternative app icons
+compiled into whisper.exe for Firefox's icon picker are Whisper's icon too; (4) the
+updater's window (updater.exe) shows Whisper's icon.
+Why: Windows shows the self-extractor's icon and details for the downloaded installer,
+Firefox's setup.ico in the installer's and uninstaller's windows and taskbar buttons,
+and the picker's icons are Firefox logos; all of them must be Whisper's (and Whisper
+Canary's for the canary). The picker itself stays off (0-whisper.js locks
+browser.shell.customIcon.enabled). gecko/scripts/winres.py check fails the build if any
+icon in the Windows package or installer is not Whisper's.
+---
+--- a/browser/app/moz.build
++++ b/browser/app/moz.build
+@@ -297,9 +297,11 @@
+     # Hyphens aren't valid in the C macro name, so map e.g. minimal-dark ->
+     # CUSTOM_MINIMAL_DARK_ICO.
+     macro = "CUSTOM_" + icon.upper().replace("-", "_") + "_ICO"
+-    DEFINES[macro] = '"%s/browser/components/shell/icons/%s.ico"' % (
++    # Whisper: these are Firefox logos. Whisper's own icon fills every slot (the
++    # picker is off: browser.shell.customIcon.enabled is locked to false).
++    DEFINES[macro] = '"%s/%s/firefox.ico"' % (
+         TOPSRCDIR,
+-        icon,
++        CONFIG["MOZ_BRANDING_DIRECTORY"],
+     )
+ 
+ if CONFIG["MOZ_ASAN"] or CONFIG["MOZ_DEBUG"]:
+--- a/browser/moz.configure
++++ b/browser/moz.configure
+@@ -89,11 +89,13 @@
+ set_config("NSIS_BRANDING_FILES", nsis_branding_files)
+ 
+ 
+-@depends(target, when=target_is_windows)
+-def nsis_sfx_module(target):
++@depends(target, moz_branding_directory, when=target_is_windows)
++def nsis_sfx_module(target, branding):
+     if target.cpu == "aarch64":
+         return "other-licenses/7zstub/firefox/7zSD.ARM64.sfx"
+-    return "other-licenses/7zstub/firefox/7zSD.Win32.sfx"
++    # Whisper: the self-extractor with Whisper's icon and file details, made by
++    # gecko/scripts/prepare.sh from the one above.
++    return "%s/7zSD.Win32.sfx" % branding
+ 
+ 
+ set_config("NSIS_SFX_MODULE", nsis_sfx_module)
+--- a/python/mozbuild/mozbuild/nsis.py
++++ b/python/mozbuild/mozbuild/nsis.py
+@@ -36,6 +36,8 @@
+ NSIS_BRANDING_FILES = (
+     "branding.nsi",
+     "firefox64.ico",
++    # Whisper: the installer's and uninstaller's own icon is a branding file.
++    "setup.ico",
+     "wizHeader.bmp",
+     "wizHeaderRTL.bmp",
+     "wizWatermark.bmp",
+@@ -54,7 +56,6 @@
+     "locale-rtl.nlf",
+     "locales.nsi",
+     "overrides.nsh",
+-    "setup.ico",
+ )
+ 
+ NSIS_CUSTOM_PLUGINS = (
+--- a/toolkit/mozapps/installer/windows/nsis/makensis.mk
++++ b/toolkit/mozapps/installer/windows/nsis/makensis.mk
+@@ -35,7 +35,7 @@
+ 	  -o '$(ABS_DIST)/$(PKG_PATH)$(PKG_INST_BASENAME).exe' \
+ 	  --package-name '$(MOZ_PKG_DIR)' \
+ 	  --package '$(ZIP_IN)' \
+-	  --tag $(topsrcdir)/$(MOZ_BUILD_APP)/installer/windows/app.tag \
++	  --tag $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)/app.tag \
+ 	  --setupexe $(CONFIG_DIR)/setup.exe \
+ 	  --sfx-stub $(SFX_MODULE) \
+ 	  $(USE_UPX)
+--- a/toolkit/mozapps/update/updater/updater-common.build
++++ b/toolkit/mozapps/update/updater/updater-common.build
+@@ -39,6 +39,11 @@
+         "progressui_win.cpp",
+     ]
+     RCINCLUDE = "%supdater.rc" % updater_rel_path
++    # Whisper: the update window shows the browser's own icon (branding).
++    DEFINES["WHISPER_UPDATER_ICO"] = '"%s/%s/firefox.ico"' % (
++        TOPSRCDIR,
++        CONFIG["MOZ_BRANDING_DIRECTORY"],
++    )
+     DEFINES["UNICODE"] = True
+     DEFINES["_UNICODE"] = True
+     USE_STATIC_MSVCRT = True
+--- a/toolkit/mozapps/update/updater/updater.rc
++++ b/toolkit/mozapps/update/updater/updater.rc
+@@ -15,6 +15,11 @@
+ #define COMCTL32_MANIFEST_PATH "updater.exe.comctl32.manifest"
+ #define ICON_PATH "updater.ico"
+ #endif
++#ifdef WHISPER_UPDATER_ICO
++// Whisper: the update window shows the browser's own icon.
++#undef ICON_PATH
++#define ICON_PATH WHISPER_UPDATER_ICO
++#endif
+ 
+ #define APSTUDIO_READONLY_SYMBOLS
+ /////////////////////////////////////////////////////////////////////////////

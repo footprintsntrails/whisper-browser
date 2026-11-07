@@ -227,6 +227,25 @@ jobs:
           }
           if (-not (Test-Path "$env:RUNNER_TEMP\app\whisper\distribution\extensions\uBlock0@raymondhill.net.xpi")) { throw 'uBlock Origin missing' }
           Get-ChildItem dist | Format-Table Name, Length
+      # The icons as Windows itself shows them in Explorer, for the record (the build job
+      # already compared every icon with Whisper's, gecko/scripts/winres.py).
+      - name: The icons Windows shows (installer, whisper.exe, uninstaller, updater)
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $out = "$env:RUNNER_TEMP\smoke\icons"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $app = "$env:RUNNER_TEMP\app\whisper"
+          $files = [ordered]@{
+            'installer' = (Get-ChildItem dist\whisper-*.installer.exe | Select-Object -First 1).FullName
+            'whisper' = "$app\whisper.exe"
+            'uninstaller' = "$app\uninstall\helper.exe"
+            'updater' = "$app\updater.exe"
+          }
+          foreach ($name in $files.Keys) {
+            $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($files[$name])
+            $icon.ToBitmap().Save("$out\$name.png", [System.Drawing.Imaging.ImageFormat]::Png)
+            "$name ($($files[$name])): $($icon.Width)x$($icon.Height)"
+          }
       - name: Start headless with a fresh user profile folder
         run: |
           $exe = "$env:RUNNER_TEMP\app\whisper\whisper.exe"

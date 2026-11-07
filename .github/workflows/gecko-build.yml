@@ -236,6 +236,40 @@ jobs:
           fi
           [ -n "$(find "$W/out" -name 'whisper-*' -print -quit)" ]
 
+      # Every icon in the Windows package and installer is Whisper's (Whisper Canary's for
+      # the canary): the installer's self-extractor, the setup.exe it carries, whisper.exe,
+      # uninstall\helper.exe, updater.exe and the rest (patches/0030). A Firefox icon fails
+      # the build, and so do Mozilla or Firefox in the installer's file details.
+      - name: Whisper's icons only (Windows)
+        id: icons
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && inputs.target == 'windows-x86_64' }}
+        run: |
+          ico=assets/icon/whisper.ico
+          if [ "$VARIANT" = canary ]; then ico=gecko/variants/canary/icon/whisper-canary.ico; fi
+          SEVENZIP=$(command -v 7zz || command -v 7z || find "$MOZBUILD_STATE_PATH" -name 7zz -type f -perm -u+x | head -n 1)
+          export SEVENZIP
+          mkdir -p "$W/icons"
+          status=0
+          python3 gecko/scripts/winres.py check --details --ico "$ico" --extract "$W/icons" \
+            "$W"/out/whisper-*.win64.zip "$W"/out/whisper-*.installer.exe > "$W/icons/check.txt" 2>&1 || status=$?
+          cat "$W/icons/check.txt"
+          {
+            echo "### Icons (${VARIANT})"
+            echo '```'
+            grep -E '^(ok|BAD)' "$W/icons/check.txt" | head -n 80
+            tail -n 1 "$W/icons/check.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.icons.outcome != 'skipped' }}
+        with:
+          name: icons-${{ inputs.variant }}-${{ inputs.target }}
+          path: ${{ env.W }}/icons/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Compiler cache statistics
         if: always()
         run: |

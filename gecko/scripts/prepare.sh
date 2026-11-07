@@ -5,8 +5,8 @@
 #   3. applies patches/*.patch in order, with no fuzz,
 #   4. copies gecko/overlay/ into the tree; overlay files must be NEW files, so a
 #      Firefox file is only ever changed by a patch that says why,
-#   5. adds what lives elsewhere in this repository (Inter fonts, icons, installer art)
-#      and the verified uBlock Origin XPI,
+#   5. adds what lives elsewhere in this repository (Inter fonts, icons, installer art,
+#      the installer's self-extractor with Whisper's icon) and the verified uBlock Origin XPI,
 #   6. checks the MAR signing certificates against the fingerprints in release.env and
 #      writes Whisper's own version into the branding prefs,
 #   7. writes SRC/mozconfig for TARGET (with the MAR channel from release.env).
@@ -140,8 +140,9 @@ cp "$repo"/profile/chrome/fonts/Inter-{Regular,Medium,SemiBold}.woff2 "$repo/pro
   "$whisper/content/fonts/"
 
 # Windows icons and installer artwork come from assets/ (rendered by `cargo xtask icons`
-# and `cargo xtask installer-art`; the canary's from `cargo xtask canary-art`).
-for ico in firefox firefox64 document document_pdf newtab newwindow pbmode; do
+# and `cargo xtask installer-art`; the canary's from `cargo xtask canary-art`). setup.ico
+# is the installer's and uninstaller's own icon (patches/0030).
+for ico in firefox firefox64 document document_pdf newtab newwindow pbmode setup; do
   cp "$icon" "$branding/$ico.ico"
 done
 cp "$art/header.bmp" "$branding/wizHeader.bmp"
@@ -185,6 +186,22 @@ fi
   echo "# Whisper's own version (added by gecko/scripts/prepare.sh from gecko/release.env)."
   echo "!define WhisperVersion \"$WHISPER_VERSION\""
 } >> "$branding/branding.nsi"
+
+# The downloaded installer starts with Firefox's 7-Zip self-extractor, a ready-made
+# program with Firefox's icon and file details inside; Windows shows those for
+# Whisper-Setup.exe. The branding folder gets a copy with Whisper's icon and details,
+# which the build uses instead (patches/0030).
+case "$target" in
+  windows-*)
+    case "$variant" in
+      release) product="Whisper" setup_name="Whisper-Setup.exe" ;;
+      canary) product="Whisper Canary" setup_name="Whisper-Canary-Setup.exe" ;;
+    esac
+    python3 "$gecko/scripts/winres.py" rebrand-sfx --ico "$icon" --product "$product" \
+      --version "$WHISPER_VERSION" --filename "$setup_name" \
+      "$src/other-licenses/7zstub/firefox/7zSD.Win32.sfx" "$branding/7zSD.Win32.sfx"
+    ;;
+esac
 
 # The mozconfig names the release branding and update channel once each; the canary
 # changes exactly those two lines.
