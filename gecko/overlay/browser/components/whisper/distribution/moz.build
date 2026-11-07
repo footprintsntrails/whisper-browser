@@ -11,6 +11,6 @@
 DIST_SUBDIR = ""
 
 FINAL_TARGET_FILES.distribution.extensions += [
-    "uBlock0@raymondhill.net.xpi",
     "addon@darkreader.org.xpi",
+    "uBlock0@raymondhill.net.xpi",
 ]

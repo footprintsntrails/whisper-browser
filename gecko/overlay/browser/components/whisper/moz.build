@@ -39,11 +39,11 @@ EXTRA_COMPONENTS += ["Whisper.manifest"]
 
 MOZ_SRC_FILES += [
     "WhisperAbout.sys.mjs",
+    "WhisperDarkReader.sys.mjs",
     "WhisperImport.sys.mjs",
     "WhisperLayout.sys.mjs",
     "WhisperLoginCrypto.sys.mjs",
     "WhisperNewTab.sys.mjs",
-    "WhisperDarkReader.sys.mjs",
     "WhisperQuickOpen.sys.mjs",
     "WhisperSettings.sys.mjs",
     "WhisperSidebar.sys.mjs",
