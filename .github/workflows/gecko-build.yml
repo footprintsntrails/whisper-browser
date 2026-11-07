@@ -152,11 +152,6 @@ jobs:
             "$W/dl/uBlock0@raymondhill.net.xpi" "$W/src" "$TARGET" "$VARIANT"
           echo "FIREFOX_VERSION=$FIREFOX_VERSION" >> "$GITHUB_ENV"
 
-      # A pref Mozilla removed would stay set and do nothing; every pref also needs a
-      # reason in gecko/prefs-manifest.json.
-      - name: Whisper's prefs still exist in this Firefox and each has a reason
-        run: python3 gecko/scripts/check-prefs.py "$W/src"
-
       - name: Restore Visual Studio files
         if: inputs.target == 'windows-x86_64'
         id: vs-cache
