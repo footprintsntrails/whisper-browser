@@ -50,7 +50,9 @@ const HOLD_TO_COPY_MS = 3000;
 
 // A one-time panel (installer notice, command warning) is shown at most once per site per
 // session; this remembers which origins already saw one.
-const sNoticedOrigins = new Set();
+// origin + "\n" + hosts  ->  the highest command level already announced for it, so a
+// later, more dangerous command (or a new host) is never silently suppressed.
+const sNoticedOrigins = new Map();
 
 // "Always allow commands from this site": a session permission so it is forgotten when
 // the browser closes (it is never written to permissions.sqlite).
@@ -281,13 +283,18 @@ export const WhisperClipguard = {
       return;
     }
 
-    // One panel per site per session for the louder notices.
+    // The louder notices are shown at most once per site per session -- but only while
+    // the command is not more dangerous than one already announced, and from the same
+    // hosts. A later command from the same origin at a HIGHER level, or from a different
+    // host, shows again, so a first MED notice can never silence a later HIGH one.
     const once = event.notice == NOTICE_INSTALLER || event.notice == NOTICE_COMMAND_WARNING;
     if (once) {
-      if (sNoticedOrigins.has(origin)) {
+      const key = origin + "\n" + (event.hosts || "");
+      const shownLevel = sNoticedOrigins.get(key);
+      if (shownLevel !== undefined && shownLevel >= event.level) {
         return;
       }
-      sNoticedOrigins.add(origin);
+      sNoticedOrigins.set(key, Math.max(shownLevel ?? 0, event.level));
     }
 
     const message = this._noticeMessage(win, event);

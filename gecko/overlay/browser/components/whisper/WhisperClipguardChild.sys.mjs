@@ -65,21 +65,46 @@ export class WhisperClipguardChild extends JSWindowActorChild {
   }
 
   _isVisible(win, el) {
+    const own = win.getComputedStyle(el);
+
+    // Text that is there but can't be read: a colour equal to the background, a colour
+    // with no alpha, or a font too small to read. These render the exact command on
+    // screen yet unreadable, which a plain visibility check would accept.
+    if (this._colorIsInvisible(win, el, own)) {
+      return false;
+    }
+    if (parseFloat(own.fontSize) < 6) {
+      return false;
+    }
+    // A collapsed line box hides the text even at a normal font size.
+    const lineHeight = parseFloat(own.lineHeight);
+    if (own.lineHeight !== "normal" && !Number.isNaN(lineHeight) && lineHeight < 1) {
+      return false;
+    }
+    // text-indent pushing the text out of its box (a classic off-screen trick).
+    const indent = parseFloat(own.textIndent);
+    if (!Number.isNaN(indent) && Math.abs(indent) > 2000) {
+      return false;
+    }
+
+    // Walk ancestors for hiding set anywhere above, and for a clip that removes the box.
     let node = el;
     let depth = 0;
     while (node && node.nodeType == node.ELEMENT_NODE && depth++ < 60) {
-      const style = win.getComputedStyle(node);
+      const style = node == el ? own : win.getComputedStyle(node);
       if (
         style.display == "none" ||
         style.visibility == "hidden" ||
         style.visibility == "collapse" ||
         style.contentVisibility == "hidden" ||
-        parseFloat(style.opacity) === 0
+        parseFloat(style.opacity) === 0 ||
+        this._clipHidesEverything(style)
       ) {
         return false;
       }
       node = node.parentElement || node.parentNode?.host;
     }
+
     const rect = el.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) {
       return false;
@@ -94,6 +119,86 @@ export class WhisperClipguardChild extends JSWindowActorChild {
         return false;
       }
     }
+
+    // Covered by a higher opaque layer (overlap hiding): sample a few points inside the
+    // element and require at least one to hit the element or one of its descendants.
+    if (!this._isOnTop(win, el, rect)) {
+      return false;
+    }
     return true;
+  }
+
+  /** The element's text colour is fully transparent, or equal to the colour painted
+   * behind it (so the text, though present, cannot be seen). */
+  _colorIsInvisible(win, el, style) {
+    const fg = this._rgba(style.color);
+    if (!fg) {
+      return false;
+    }
+    if (fg.a === 0) {
+      return true;
+    }
+    // The first non-transparent background colour up the ancestor chain.
+    let node = el;
+    let depth = 0;
+    let bg = null;
+    while (node && node.nodeType == node.ELEMENT_NODE && depth++ < 60) {
+      const c = this._rgba(win.getComputedStyle(node).backgroundColor);
+      if (c && c.a > 0) {
+        bg = c;
+        break;
+      }
+      node = node.parentElement || node.parentNode?.host;
+    }
+    if (!bg) {
+      bg = { r: 255, g: 255, b: 255, a: 1 }; // the default canvas is white
+    }
+    return (
+      Math.abs(fg.r - bg.r) <= 8 &&
+      Math.abs(fg.g - bg.g) <= 8 &&
+      Math.abs(fg.b - bg.b) <= 8
+    );
+  }
+
+  _rgba(value) {
+    const m = /rgba?\(([^)]+)\)/.exec(value || "");
+    if (!m) {
+      return null;
+    }
+    const parts = m[1].split(/[,/]/).map(s => parseFloat(s.trim()));
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts[3] === undefined ? 1 : parts[3] };
+  }
+
+  _clipHidesEverything(style) {
+    // clip-path that collapses the box to nothing, or the legacy clip: rect(0,0,0,0).
+    const cp = style.clipPath;
+    if (cp && (cp.includes("inset(100%") || cp.includes("circle(0") || cp === "polygon(0px 0px)")) {
+      return true;
+    }
+    const clip = style.clip;
+    if (clip && /rect\(\s*0\w*[,\s]+0\w*[,\s]+0\w*[,\s]+0/.test(clip)) {
+      return true;
+    }
+    return false;
+  }
+
+  _isOnTop(win, el, rect) {
+    const xs = [0.5, 0.15, 0.85];
+    const ys = [0.5, 0.15, 0.85];
+    for (const fx of xs) {
+      for (const fy of ys) {
+        const x = rect.left + rect.width * fx;
+        const y = rect.top + rect.height * fy;
+        if (x < 0 || y < 0 || x > win.innerWidth || y > win.innerHeight) {
+          continue;
+        }
+        const hit = el.ownerDocument.elementFromPoint(x, y);
+        if (hit && (hit == el || el.contains(hit) || hit.contains(el))) {
+          return true;
+        }
+      }
+    }
+    // No sample point reached the element (fully covered, or entirely off the viewport).
+    return false;
   }
 }

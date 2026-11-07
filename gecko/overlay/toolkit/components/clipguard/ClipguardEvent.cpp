@@ -88,10 +88,11 @@ void ClipguardEvent::CommitHeldText() {
   // The real text is going on the clipboard with its own origin; same-origin read-back no
   // longer needs the override.
   ClipboardGuard::ForgetReadback(mHold->mWhichClipboard);
-  // Commit the page's real text with no further checking (it has been allowed).
-  mHold->mClipboard->SetDataImpl(mHold->mTransferable, mHold->mOwner,
-                                 mHold->mWhichClipboard, mHold->mWindowContext,
-                                 /* aCheckContentAnalysis */ false);
+  // Commit the page's real text: skip the clipguard re-check (already allowed), but go
+  // through enterprise Content Analysis if it is active (F6).
+  ClipboardGuard::CommitAllowedWrite(mHold->mClipboard, mHold->mTransferable,
+                                     mHold->mOwner, mHold->mWhichClipboard,
+                                     mHold->mWindowContext);
 }
 
 void ClipguardEvent::DropHold() {

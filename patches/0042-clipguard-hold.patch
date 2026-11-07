@@ -7,17 +7,23 @@ the text with the clipguard Rust crate and either lets the write through, remove
 trailing line break, or replaces it with a harmless placeholder while holding the real
 text for "Copy anyway". The clipboard read paths (GetDataIfSmallerThanNative,
 GetDataSnapshot, GetDataSnapshotSync) also ask the guard first: while a block is in effect,
-the page that was blocked -- and only that page (same top browsing context and origin) --
-reads back its own written text instead of the placeholder, so it cannot tell it was
-blocked; every other reader gets the placeholder. nsBaseClipboard grants the guard and its
-event object friendship so they can commit a held write through the existing
-SetDataImpl(aCheckContentAnalysis = false) path, the same primitive content analysis uses.
+a reader of the same origin as the writer reads back the page's own written text instead of
+the placeholder, so the page cannot tell it was blocked; every other origin gets the
+placeholder. nsBaseClipboard grants the guard and its event object friendship so they can
+commit a held write through the existing SetDataImpl(aCheckContentAnalysis = false) path.
 A real content write forgets the read-back override.
-Why: the hold/placeholder/false-success machinery reuses PendingCopy, present since Firefox
-158. The page never learns the decision: its write always succeeds, and a read-back probe
-gets its own text. nsIClipguardEvent carries the decision to the interface. The file was
-last changed in September 2026 (bug 2057113, bug 2067877); keep this patch small so an
-engine update rebases cleanly.
+
+Engine-update contract (re-check on every Firefox rebase; the guard reaches into private
+clipboard internals, so a change here can break it silently -- see the matching list and
+the compile-time/runtime assertions in toolkit/components/clipguard/ClipboardGuard.cpp):
+  1. SetDataImpl still takes aCheckContentAnalysis, and with it false neither re-runs the
+     guard nor Firefox's content-analysis copy check, and commits synchronously.
+  2. The write completion runs exactly once; the Handled path runs it and returns NS_OK
+     without finish().
+  3. PendingCopy / CancelPendingCopy and the mMutatingNativeClipboard re-entrancy guard
+     still exist and behave as in 159 (bug 2057113, bug 2067877 last touched this).
+  4. The three read methods above still carry the requesting window/principal.
+Only a CI build and the smoke test exercise (2) and (3) end to end.
 ---
 --- a/widget/nsBaseClipboard.h
 +++ b/widget/nsBaseClipboard.h

@@ -77,6 +77,15 @@ class ClipboardGuard final {
   // check so SetDataImpl pays nothing when it is off.
   static bool IsEnabled();
 
+  // Commits a write the guard has already decided to allow ("Copy anyway", or a command
+  // found on screen): writes the real text, skipping the clipguard re-check but still
+  // going through enterprise Content Analysis when it is active (F6).
+  static void CommitAllowedWrite(nsBaseClipboard* aClipboard,
+                                 nsITransferable* aTransferable,
+                                 nsIClipboardOwner* aOwner,
+                                 nsIClipboard::ClipboardType aWhichClipboard,
+                                 mozilla::dom::WindowContext* aWindowContext);
+
   // --- Read-back: the page that was blocked must not learn it, so when the same page
   // (same top-level browsing context and the same origin) reads the clipboard while the
   // block is in effect, it gets its own written text, not the placeholder. Every other

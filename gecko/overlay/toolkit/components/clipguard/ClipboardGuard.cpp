@@ -4,9 +4,13 @@
 
 #include "ClipboardGuard.h"
 
+#include <type_traits>
+
+#include "mozilla/AutoRestore.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Clipguard.h"  // the clipguard Rust crate (cbindgen)
 #include "mozilla/ClipguardEvent.h"
+#include "mozilla/MoveOnlyFunction.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_clipguard.h"
@@ -17,6 +21,7 @@
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIClipboardOwner.h"
+#include "nsIContentAnalysis.h"
 #include "nsIObserverService.h"
 #include "nsIPermissionManager.h"
 #include "nsIPrincipal.h"
@@ -30,6 +35,32 @@ namespace mozilla {
 
 using dom::WindowContext;
 using dom::WindowGlobalParent;
+
+// Contract with nsBaseClipboard (patches/0042-clipguard-hold.patch). The guard reaches
+// into private clipboard internals, so a Firefox rebase can silently break it. On every
+// engine update re-check, and keep this list in step with the patch header:
+//   1. nsBaseClipboard::SetDataImpl still takes aCheckContentAnalysis and, when it is
+//      false, neither re-runs this guard nor the content-analysis copy check, and commits
+//      synchronously. (This guard calls that private method via friendship.)
+//   2. The write completion runs exactly once; passing it to the guard and NOT calling
+//      finish() on the Handled path still resolves the page's promise once.
+//   3. PendingCopy / CancelPendingCopy and the mMutatingNativeClipboard re-entrancy guard
+//      still exist and behave as in 159.
+//   4. The read methods the guard hooks (GetDataIfSmallerThanNative, GetDataSnapshot,
+//      GetDataSnapshotSync) still carry the requesting window/principal.
+// (1) and the completion type are checked at compile time here; (2)/(3) by the
+// re-entrancy assertion in Guard() and the smoke test; a signature change breaks the
+// build at the call sites.
+static_assert(
+    std::is_same_v<nsBaseClipboard::SetDataCompletion,
+                   mozilla::MoveOnlyFunction<void(nsresult)>>,
+    "nsBaseClipboard::SetDataCompletion changed; re-check the clipguard contract above "
+    "(patches/0042-clipguard-hold.patch) before updating this assertion.");
+
+// Set while the guard runs a commit that must skip the clipguard re-check but still go
+// through Firefox's content-analysis copy interception (F6). Main-thread only: all
+// clipboard writes run on the parent main thread.
+static bool sSkipGuardOnce = false;
 
 namespace {
 
@@ -163,7 +194,6 @@ nsCOMPtr<nsITransferable> CloneTextTransferable(nsITransferable* aSource,
 // One held page's own text, for same-origin read-back while the block is in effect.
 struct ReadbackEntry {
   nsIClipboard::ClipboardType mType = nsIClipboard::kGlobalClipboard;
-  uint64_t mTopBrowsingContextId = 0;
   nsCOMPtr<nsIPrincipal> mPrincipal;
   nsCOMPtr<nsITransferable> mOwnText;
   mozilla::TimeStamp mExpiry;
@@ -180,43 +210,37 @@ nsTArray<ReadbackEntry>& Readback() {
   return *sReadback;
 }
 
-// The top browsing context id and content principal for a window context, or false.
-bool WriterIdentity(WindowContext* aWindowContext, uint64_t& aTopBcId,
-                    nsCOMPtr<nsIPrincipal>& aPrincipal) {
+// The content principal for a window context, or null.
+already_AddRefed<nsIPrincipal> ContentPrincipalOf(WindowContext* aWindowContext) {
   if (!aWindowContext) {
-    return false;
+    return nullptr;
   }
-  dom::BrowsingContext* bc = aWindowContext->GetBrowsingContext();
   RefPtr<WindowGlobalParent> wgp = aWindowContext->Canonical();
-  if (!bc || !wgp) {
-    return false;
+  nsCOMPtr<nsIPrincipal> principal = wgp ? wgp->DocumentPrincipal() : nullptr;
+  if (!principal || !principal->GetIsContentPrincipal()) {
+    return nullptr;
   }
-  aPrincipal = wgp->DocumentPrincipal();
-  if (!aPrincipal || !aPrincipal->GetIsContentPrincipal()) {
-    return false;
-  }
-  aTopBcId = bc->Top()->Id();
-  return true;
+  return principal.forget();
 }
 
-// The read-back entry for this type, matched to a reader that is the same page (same top
-// browsing context and the same origin) and not expired; prunes expired entries.
+// The read-back entry for this type, matched to a reader of the SAME ORIGIN as the writer
+// (strict principal Equals), whatever browsing context it is in, and not expired; prunes
+// expired entries. Keying on the origin, not the writer's top browsing context, means a
+// same-origin popup or tab opened by the page also reads the page's own text, so the page
+// cannot use a popup as an oracle for "was I blocked". A different origin never matches, so
+// it still gets the placeholder.
 ReadbackEntry* MatchReadback(nsIClipboard::ClipboardType aWhichClipboard,
                              WindowContext* aReaderWindowContext,
                              nsIPrincipal* aReaderPrincipal) {
-  if (!sReadback || !aReaderWindowContext) {
+  if (!sReadback) {
     return nullptr;
   }
-  dom::BrowsingContext* bc = aReaderWindowContext->GetBrowsingContext();
-  RefPtr<WindowGlobalParent> wgp = aReaderWindowContext->Canonical();
-  if (!bc || !wgp) {
-    return nullptr;
-  }
-  uint64_t readerTopBc = bc->Top()->Id();
   // The snapshot read path passes the reader principal explicitly; the sync read path
   // takes it from the reader window.
-  nsCOMPtr<nsIPrincipal> readerPrincipal =
-      aReaderPrincipal ? aReaderPrincipal : wgp->DocumentPrincipal();
+  nsCOMPtr<nsIPrincipal> readerPrincipal = aReaderPrincipal;
+  if (!readerPrincipal) {
+    readerPrincipal = ContentPrincipalOf(aReaderWindowContext);
+  }
   if (!readerPrincipal || !readerPrincipal->GetIsContentPrincipal()) {
     return nullptr;
   }
@@ -228,8 +252,8 @@ ReadbackEntry* MatchReadback(nsIClipboard::ClipboardType aWhichClipboard,
       entries.RemoveElementAt(i - 1);
       continue;
     }
-    if (e.mType == aWhichClipboard && e.mTopBrowsingContextId == readerTopBc &&
-        e.mPrincipal && e.mPrincipal->Equals(readerPrincipal)) {
+    if (e.mType == aWhichClipboard && e.mPrincipal &&
+        e.mPrincipal->Equals(readerPrincipal)) {
       return &e;
     }
   }
@@ -241,15 +265,13 @@ ReadbackEntry* MatchReadback(nsIClipboard::ClipboardType aWhichClipboard,
 /* static */ void ClipboardGuard::RememberReadback(
     nsIClipboard::ClipboardType aWhichClipboard, WindowContext* aWriterWindowContext,
     nsITransferable* aOwnText) {
-  uint64_t topBc = 0;
-  nsCOMPtr<nsIPrincipal> principal;
-  if (!WriterIdentity(aWriterWindowContext, topBc, principal) || !aOwnText) {
+  nsCOMPtr<nsIPrincipal> principal = ContentPrincipalOf(aWriterWindowContext);
+  if (!principal || !aOwnText) {
     return;
   }
   ForgetReadback(aWhichClipboard);
   ReadbackEntry entry;
   entry.mType = aWhichClipboard;
-  entry.mTopBrowsingContextId = topBc;
   entry.mPrincipal = principal;
   entry.mOwnText = aOwnText;
   entry.mExpiry =
@@ -309,10 +331,47 @@ static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aV
 
 /* static */ bool ClipboardGuard::IsEnabled() { return !GuardOff(); }
 
+/* static */ void ClipboardGuard::CommitAllowedWrite(
+    nsBaseClipboard* aClipboard, nsITransferable* aTransferable,
+    nsIClipboardOwner* aOwner, nsIClipboard::ClipboardType aWhichClipboard,
+    WindowContext* aWindowContext) {
+  // The person chose "Copy anyway", or the command turned out to be on screen: put the
+  // real text on the clipboard. Skip the clipguard re-check (the decision is already
+  // made), but if enterprise Content Analysis is active, still route the write through it
+  // -- a normal copy would be checked, so "Copy anyway" must be too (F6). When Content
+  // Analysis is not active (the usual case) this is the plain, synchronous commit.
+  const bool contentAnalysis = nsIContentAnalysis::MightBeActive();
+  if (contentAnalysis) {
+    sSkipGuardOnce = true;
+  }
+  aClipboard->SetDataImpl(aTransferable, aOwner, aWhichClipboard, aWindowContext,
+                          /* aCheckContentAnalysis */ contentAnalysis);
+  sSkipGuardOnce = false;
+}
+
 /* static */ ClipboardGuard::Result ClipboardGuard::Guard(
     nsBaseClipboard* aClipboard, nsITransferable* aTransferable,
     nsIClipboardOwner* aOwner, nsIClipboard::ClipboardType aWhichClipboard,
     WindowContext* aWindowContext, nsBaseClipboard::SetDataCompletion& aCompletion) {
+  // A guard-initiated commit that is going through content analysis (see
+  // CommitAllowedWrite): skip the clipguard re-check, but let the rest of SetDataImpl,
+  // including the content-analysis copy check, run.
+  if (sSkipGuardOnce) {
+    sSkipGuardOnce = false;
+    return Result::NotGuarded;
+  }
+
+  // The guard must never be entered re-entrantly: the placeholder and commit writes pass
+  // aCheckContentAnalysis = false precisely so SetDataImpl does not call back into here.
+  // If a rebase breaks that, this fires loudly in debug builds (see the contract above).
+  static bool sInGuard = false;
+  MOZ_DIAGNOSTIC_ASSERT(
+      !sInGuard,
+      "clipguard re-entered SetDataImpl's guarded pass; the aCheckContentAnalysis=false "
+      "contract (patches/0042-clipguard-hold.patch) may have changed on a Firefox rebase.");
+  mozilla::AutoRestore<bool> restoreInGuard(sInGuard);
+  sInGuard = true;
+
   // Only content writes to the global clipboard are checked. A null or chrome window is
   // the browser itself (the URL bar, an about: page, the placeholder write below) and is
   // left alone -- the same gate content analysis uses in NeedsCopyContentAnalysis.

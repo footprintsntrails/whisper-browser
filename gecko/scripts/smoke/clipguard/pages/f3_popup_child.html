@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>popup</title></head>
+<body>
+<script>
+// Same-origin popup opened by the page under test. Read the clipboard and report back to
+// the opener. With the read-back fix this returns the page's own text, not the placeholder.
+(async () => {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (e) {
+    text = "<error: " + e + ">";
+  }
+  if (window.opener) {
+    window.opener.postMessage({ whisperRead: text }, "*");
+  }
+  window.close();
+})();
+</script>
+</body></html>

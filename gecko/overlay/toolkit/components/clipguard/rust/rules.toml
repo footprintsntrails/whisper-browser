@@ -40,8 +40,10 @@ format = 1
 # shell, the Run box or the Explorer address bar would execute (a test checks this).
 placeholder = "# BLOCKED BY BROWSER page tried to place a command here do not run it"
 
-# Text longer than this (after runs of spaces are shortened) is checked at its start and
-# end only. Regular expressions here run in linear time, so this bounds the work.
+# How many bytes of a write the browser scans in full. The whole write up to this size is
+# classified (the regular expressions here run in linear time, so this bounds the work); a
+# write larger than this is treated as at least MED, so a script cannot bury a command in
+# the part that was not scanned.
 max_scan_bytes = 262144
 
 [command]

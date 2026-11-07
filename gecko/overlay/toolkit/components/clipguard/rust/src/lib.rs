@@ -106,11 +106,14 @@ pub enum Reason {
     ControlChars = 1 << 13,
     /// Ends with a line break, so pasting it into a terminal would run it at once.
     TrailingNewline = 1 << 14,
+    /// The write was larger than the browser scans, so it could be hiding a command in
+    /// the part that was not scanned; it is treated as at least MED.
+    Oversize = 1 << 15,
 }
 
 impl Reason {
     /// Every reason, in bit order.
-    pub const ALL: [Reason; 15] = [
+    pub const ALL: [Reason; 16] = [
         Reason::DownloadRun,
         Reason::DecodeRun,
         Reason::RemoteTool,
@@ -126,6 +129,7 @@ impl Reason {
         Reason::LookalikeChars,
         Reason::ControlChars,
         Reason::TrailingNewline,
+        Reason::Oversize,
     ];
 }
 
@@ -194,4 +198,31 @@ impl Verdict {
 /// What the clipboard holds instead of a blocked command.
 pub fn placeholder() -> &'static str {
     rules::PLACEHOLDER
+}
+
+/// Runs `f` at the C ABI boundary, returning `default` if it panics, so a classifier bug
+/// degrades to a safe answer instead of aborting the parent process. This catches only
+/// when the build unwinds; a libxul build uses `panic = "abort"`, where a panic aborts
+/// before this can run, so it is defence in depth — the classifier is written not to
+/// panic. The default each FFI function passes is the safe one (treat as MED, block, not
+/// visible, or empty); see `clipguard_ffi`.
+#[doc(hidden)]
+pub fn ffi_guard<T>(default: T, f: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(value) => value,
+        Err(_) => default,
+    }
+}
+
+#[cfg(test)]
+mod lib_tests {
+    use super::*;
+
+    #[test]
+    fn ffi_guard_returns_the_default_on_panic() {
+        assert_eq!(ffi_guard(7u8, || 3), 3);
+        assert_eq!(ffi_guard(7u8, || panic!("boom")), 7);
+        // The safe default for classify is MED, so a panicking classify blocks.
+        assert_eq!(ffi_guard(Level::Med, || panic!()), Level::Med);
+    }
 }

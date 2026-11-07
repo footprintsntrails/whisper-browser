@@ -4,15 +4,14 @@ What: carries, from the content process to the parent, a one-byte "who wrote thi
 (mozilla::ClipguardSource) and -- for a copy where a page copy/cut handler replaced the
 person's selection -- the plain text the person had selected (capped at 4096). Both ride on
 nsITransferable and as fields of IPCTransferable, not as clipboard flavors, so neither
-reaches the native clipboard. nsCopySupport sets them: the person's own Ctrl+C, a page
-handler that replaced the data, or a script's execCommand (including copying a hidden
-textarea). A one-line Document getter exposes whether a page script's execCommand is
-running.
+reaches the native clipboard. nsCopySupport sets the label for the person's own Ctrl+C, a
+page handler that replaced the data, or a script's execCommand (including copying a hidden
+textarea); dom/events/Clipboard.cpp labels navigator.clipboard writes as AsyncClipboard. A
+one-line Document getter exposes whether a page script's execCommand is running.
 Why: the parent must tell the person's own copy (never blocked) from a script's write, and
 for a handler that replaced the selection it must tell a real substitution (the replacement
 is more dangerous than what the person selected) from a harmless one (a tidy-up, or a
-"Read more at <url>" appended). An unlabelled content write (for example
-navigator.clipboard) stays unlabelled and is treated as a script, the safe default.
+"Read more at <url>" appended).
 ---
 --- a/dom/base/Document.h
 +++ b/dom/base/Document.h
@@ -75,6 +74,29 @@ navigator.clipboard) stays unlabelled and is treated as a script, the safe defau
        if (NS_FAILED(
                AppendSourceURL(*transferable, GetDocumentSourceURL(*doc)))) {
          return false;
+--- a/dom/events/Clipboard.cpp
++++ b/dom/events/Clipboard.cpp
+@@ -27,6 +27,7 @@
+ #include "nsArrayUtils.h"
+ #include "nsComponentManagerUtils.h"
+ #include "nsContentUtils.h"
++#include "mozilla/ClipboardGuardSource.h"
+ #include "nsCopySupport.h"
+ #include "nsGlobalWindowInner.h"
+ #include "nsIClipboard.h"
+@@ -996,6 +997,12 @@
+           return;
+         }
+ 
++        // Whisper ClickFix: label this as a navigator.clipboard write (P4). It does not
++        // go through nsCopySupport, so without this its source would be Unknown; both are
++        // treated as a script write, but the label matches the design (F7).
++        transferable->SetWhisperCopySource(
++            static_cast<uint8_t>(mozilla::ClipguardSource::AsyncClipboard));
++
+         // Finally write data to clipboard
+         request->SetData(transferable, /* clipboard owner */ nullptr);
+       },
 --- a/dom/ipc/IPCTransferable.ipdlh
 +++ b/dom/ipc/IPCTransferable.ipdlh
 @@ -82,6 +82,10 @@

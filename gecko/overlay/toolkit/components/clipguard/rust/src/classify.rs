@@ -186,7 +186,7 @@ fn classify_folded(folded: &Folded, original: &str) -> Verdict {
         reasons.insert(Reason::ControlChars);
     }
 
-    let level = if folded.paste_marker
+    let mut level = if folded.paste_marker
         || padding
         || (command && (folded.controls > 0 || lure || hidden_in_command))
     {
@@ -201,11 +201,20 @@ fn classify_folded(folded: &Folded, original: &str) -> Verdict {
         Level::None
     };
 
+    // A write larger than the browser scans could be hiding a command in the unscanned
+    // part, so it is treated as at least MED: a script write of that size is not something
+    // Whisper will quietly let through (see normalize::fold).
+    if folded.oversize && level < Level::Med {
+        level = Level::Med;
+        reasons.insert(Reason::Oversize);
+    }
+
     if level >= Level::Low && ends_with_line_break(original) {
         reasons.insert(Reason::TrailingNewline);
     }
 
-    let known_installer = level == Level::Med && hosts::all_known_installers(&folded.text);
+    let known_installer =
+        level == Level::Med && !folded.oversize && hosts::all_known_installers(&folded.text);
     Verdict {
         level,
         reasons,
