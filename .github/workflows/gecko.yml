@@ -320,8 +320,17 @@ jobs:
   publish-canary:
     name: Publish Whisper Canary
     needs: [linux, windows, canary-linux, canary-windows, update-linux, update-windows, smoke-linux, smoke-windows]
-    # A push to wip/canary, or a run started by hand on it; never on main or a tag
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/wip/canary'
+    # A push to wip/canary, or a run started by hand on it; never on main or a tag.
+    # The owner uses Canary on Windows only: it is published once every build and the
+    # Windows tests pass. The Linux tests still run and report, but do not hold Canary
+    # back (they gate main and releases instead).
+    if: >-
+      ${{ !cancelled()
+          && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          && github.ref == 'refs/heads/wip/canary'
+          && needs.linux.result == 'success' && needs.windows.result == 'success'
+          && needs.canary-linux.result == 'success' && needs.canary-windows.result == 'success'
+          && needs.update-windows.result == 'success' && needs.smoke-windows.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: canary
