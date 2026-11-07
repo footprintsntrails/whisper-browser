@@ -64,8 +64,7 @@ const OFFER_PREF = "whisper.import.offerOnFirstRun";
 /**
  * Where each browser keeps profiles.ini. Linux paths start at the home folder, or at
  * $XDG_CONFIG_HOME (~/.config) when they begin with "@config/"; Windows paths at
- * %APPDATA%; macOS paths at ~/Library/Application Support. The same list as Whisper's
- * earlier launcher (crates/whisper/src/import.rs).
+ * %APPDATA%; macOS paths at ~/Library/Application Support.
  */
 const FAMILY = {
   firefox: {
