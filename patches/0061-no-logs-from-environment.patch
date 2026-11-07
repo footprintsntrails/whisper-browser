@@ -1,0 +1,66 @@
+Whisper: no TLS keys, logs or profiles written because of environment variables
+
+What: builds NSS without SSLKEYLOGFILE support; clears MOZ_LOG, MOZ_LOG_FILE,
+MOZ_LOG_MODULES, NSPR_LOG_MODULES and NSPR_LOG_FILE (and the --MOZ_LOG and
+--MOZ_LOG_FILE arguments) in every process before logging reads them; ignores
+MOZ_PROFILER_SHUTDOWN, which saves a profile to a file when the browser quits.
+Why: any program running as the user can set an environment variable (on Windows for
+good, under HKCU\Environment) and make every later start of the browser silently write
+the TLS session keys of every connection, an HTTP log with every address, or a profile
+with the open pages to a file of its choosing. Logging started from inside the browser
+(about:logging, or the logging.* prefs in the profile) still works, so a log for a bug
+report is still possible; the canary is built the same way. Concept patch 25
+("no-keylog-no-mozlog", logs_and_traces.md).
+---
+diff --git a/security/moz.build b/security/moz.build
+--- a/security/moz.build
++++ b/security/moz.build
+@@ -92,7 +92,9 @@
+ gyp_vars["disable_tests"] = 1
+ gyp_vars["disable_dbm"] = 1
+ gyp_vars["disable_libpkix"] = 1
+-gyp_vars["enable_sslkeylogfile"] = 1
++# Whisper: NSS never writes TLS session keys to the file named by SSLKEYLOGFILE
++# (any program running as the user can set that variable).
++gyp_vars["enable_sslkeylogfile"] = 0
+ # Whether we're using system NSS or Rust nssckbi, we don't need
+ # to build C nssckbi
+ gyp_vars["disable_ckbi"] = 1
+diff --git a/tools/profiler/core/platform.cpp b/tools/profiler/core/platform.cpp
+--- a/tools/profiler/core/platform.cpp
++++ b/tools/profiler/core/platform.cpp
+@@ -6497,7 +6497,9 @@
+ 
+   // We collect information here to be used below so it can be done outside of
+   // the lock. We only need it if MOZ_PROFILER_SHUTDOWN is set and not empty.
+-  const char* filename = getenv("MOZ_PROFILER_SHUTDOWN");
++  // Whisper: a profile (it lists the pages that were open) is never written to
++  // a file named by an environment variable at shutdown.
++  const char* filename = nullptr;
+   PreRecordedMetaInformation preRecordedMetaInformation = {};
+   if (filename && filename[0] != '\0') {
+     preRecordedMetaInformation = PreRecordMetaInformation(/* aShutdown */ true);
+diff --git a/xpcom/base/Logging.cpp b/xpcom/base/Logging.cpp
+--- a/xpcom/base/Logging.cpp
++++ b/xpcom/base/Logging.cpp
+@@ -378,6 +378,20 @@
+                                    PR_SetEnv(ToNewCString(env));
+                                  });
+ 
++    // Whisper: no environment variable or command-line argument can make the
++    // browser write a log, since any program running as the user can set one.
++    // They are cleared here, in every process, before they are read (and so
++    // child processes do not inherit them: MapChildLogging copies
++    // MOZ_LOG_FILE). Logging started from inside the browser (about:logging,
++    // the logging.* prefs) still works.
++    static const char* const kWhisperClearedLogEnv[] = {
++        "MOZ_LOG=",      "MOZ_LOG_MODULES=", "NSPR_LOG_MODULES=",
++        "MOZ_LOG_FILE=", "NSPR_LOG_FILE="};
++    for (const char* cleared : kWhisperClearedLogEnv) {
++      // PR_SetEnv keeps the pointer; these are string literals.
++      PR_SetEnv(cleared);
++    }
++
+     bool shouldAppend = false;
+     bool addTimestamp = false;
+     bool isSync = false;

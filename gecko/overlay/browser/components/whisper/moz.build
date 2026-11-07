@@ -17,8 +17,9 @@
 #   locales/                Whisper's strings
 #   distribution/           uBlock Origin, installed on first start
 #   linux/                  install.sh: installs a Linux package for the current user
+#   security/               security features (security/moz.build lists them)
 
-DIRS += ["distribution"]
+DIRS += ["distribution", "security"]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     DIRS += ["linux"]

@@ -1,0 +1,21 @@
+Whisper: package Whisper's security prefs
+
+What: lists browser/defaults/preferences/0-whisper-security.js in the package manifest.
+Why: the security features keep their prefs in their own file
+(browser/components/whisper/security/0-whisper-security.js), so they can change without
+touching 0-whisper.js; the package manifest names every default pref file, and one that
+is not listed is left out of the package. The line sits apart from 0005's so that both
+patches keep applying with no fuzz when either changes.
+---
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -279,6 +279,8 @@
+ @RESPATH@/browser/defaults/permissions
+ ; Remote Settings JSON dumps
+ @RESPATH@/browser/defaults/settings
++; Whisper's security prefs (browser/components/whisper/security/0-whisper-security.js)
++@RESPATH@/browser/@PREF_DIR@/0-whisper-security.js
+ 
+ # channel-prefs.js has been removed on macOS.
+ #ifndef XP_MACOSX
