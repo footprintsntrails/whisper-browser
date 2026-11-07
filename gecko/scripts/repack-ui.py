@@ -7,10 +7,14 @@ in an unpacked Linux package, so a change can be smoke-tested in minutes
 (.github/workflows/gecko-ui-quick.yml). Release packages always come from a full build.
 
 Usage: repack-ui.py APP_DIR      (the folder that holds the `whisper` program)
-       repack-ui.py --check FILE... (exit 0 if a change to these repository files
+       repack-ui.py --check [--base COMMIT] FILE...
+                                    (exit 0 if a change to these repository files
                                      reaches the browser completely by repacking:
                                      each is one of the files below, or changes
-                                     nothing that is built)
+                                     nothing that is built. With --base, a file
+                                     below that did not exist in COMMIT, the build
+                                     being repacked, needs the full build: a repack
+                                     replaces files, it does not add them)
 
 Whisper Canary uses the same repack for changes to the interface only: the files of the
 current commit go into the last canary build, which then gets a new build ID
@@ -42,6 +46,8 @@ FILES = [
     ("browser/omni.ja", "chrome/browser/content/branding/about.png", f"{BRANDING}/content/about.png"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperUI.sys.mjs", f"{WHISPER}/WhisperUI.sys.mjs"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperSidebar.sys.mjs", f"{WHISPER}/WhisperSidebar.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperLayout.sys.mjs", f"{WHISPER}/WhisperLayout.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperToolbar.sys.mjs", f"{WHISPER}/WhisperToolbar.sys.mjs"),
 ]
 
 
@@ -53,11 +59,21 @@ NOT_BUILT = ("gecko/scripts/smoke/", "gecko/scripts/update/", "gecko/scripts/rep
              "gecko/network-allowlist.txt")
 
 
-def can_repack(changed):
+def existed(path, commit):
+    """Whether the repository had `path` in `commit`."""
+    import subprocess
+    return subprocess.run(["git", "-C", REPO, "cat-file", "-e", f"{commit}:{path}"],
+                          capture_output=True).returncode == 0
+
+
+def can_repack(changed, base=None):
     """The changed repository files that a repack cannot bring into a build."""
     sources = {f"gecko/overlay/{src}" for _, _, src in FILES}
     blocking = []
     for path in changed:
+        if path in sources and base and not existed(path, base):
+            blocking.append(path)  # new in this change: the build has no such file yet
+            continue
         if path in sources or not path.startswith(BUILT) or path.startswith(NOT_BUILT):
             continue
         blocking.append(path)
@@ -115,7 +131,11 @@ def check_same_layout(original, rewritten):
 
 def main():
     if sys.argv[1:2] == ["--check"]:
-        blocking = can_repack([f for f in sys.argv[2:] if f])
+        args = sys.argv[2:]
+        base = None
+        if args[:1] == ["--base"]:
+            base, args = args[1], args[2:]
+        blocking = can_repack([f for f in args if f], base)
         for f in blocking:
             print(f"needs a full build: {f}")
         sys.exit(1 if blocking else 0)

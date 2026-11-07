@@ -11,8 +11,10 @@
 #   WhisperUI.sys.mjs       entry point: stylesheets, uBlock Origin first run
 #   WhisperAbout.sys.mjs    the about dialog: Whisper's version, based on Firefox's
 #   WhisperImport.sys.mjs   import from Firefox, Zen, LibreWolf, Floorp and Waterfox
+#   WhisperLayout.sys.mjs   the window layout state (tabs, sidebar mode, toolbar), see README.md
 #   WhisperLoginCrypto.sys.mjs  reads their saved passwords (their own key4.db)
 #   WhisperSidebar.sys.mjs  the three tab sidebar modes
+#   WhisperToolbar.sys.mjs  the slim toolbar row, set once per profile
 #   content/                the Cast stylesheets and the Inter font
 #   locales/                Whisper's strings
 #   distribution/           uBlock Origin, installed on first start
@@ -32,7 +34,9 @@ EXTRA_COMPONENTS += ["Whisper.manifest"]
 MOZ_SRC_FILES += [
     "WhisperAbout.sys.mjs",
     "WhisperImport.sys.mjs",
+    "WhisperLayout.sys.mjs",
     "WhisperLoginCrypto.sys.mjs",
     "WhisperSidebar.sys.mjs",
+    "WhisperToolbar.sys.mjs",
     "WhisperUI.sys.mjs",
 ]

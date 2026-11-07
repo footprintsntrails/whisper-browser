@@ -31,6 +31,9 @@
   --w-focus: #a7c7e7;
   --w-radius: 10px;
   --w-gap: 8px;
+  /* The colour of the window's space (WhisperLayout.setSpaceColor); Cast black until
+   * spaces exist. The new tab page reads the same variable. */
+  --whisper-space-color: var(--w-black);
 
   /* Tab sidebar geometry (see "Tab sidebar" below) */
   --w-tab-height: 40px;
@@ -197,4 +200,15 @@ menupopup, panel { --panel-border-radius: 10px !important; }
       display: none !important;
     }
   }
+}
+
+/* ===== Toolbar (WhisperToolbar.sys.mjs) ===============================================
+ * One slim row; whisper.toolbar.style "compact" is Firefox's compact density (a 28 px
+ * address bar), "standard" its normal one. The sidebar button stays placed (Firefox
+ * turns vertical tabs off when it is removed) but shows only with horizontal tabs,
+ * where it opens the bookmarks, history and passwords panels; the vertical sidebar has
+ * its own buttons.
+ */
+:root[whisper-tabs="vertical"]:not([customizing]) #sidebar-button {
+  display: none !important;
 }

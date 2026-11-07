@@ -173,7 +173,7 @@ jobs:
           changed=$(git diff --name-only "$sha" "$GITHUB_SHA")
           echo "$changed"
           # shellcheck disable=SC2086  # one file name per word
-          if python3 gecko/scripts/repack-ui.py --check $changed; then
+          if python3 gecko/scripts/repack-ui.py --check --base "$sha" $changed; then
             repack=true
           else
             repack=false

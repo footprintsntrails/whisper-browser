@@ -18,10 +18,10 @@ browser runs under the X display in $DISPLAY (xvfb in CI). The test:
      its value and lock,
      uBlock Origin installed from the distribution folder, enabled, allowed in private
      windows and pinned to the toolbar, no welcome or terms tab, the Cast stylesheet
-     loaded, the three sidebar modes (with a screenshot of each), the auto-hide reveal
-     in the 14 px strip at the left edge, at its very edge and near its inner side (the
-     real X pointer with xdotool when installed), the sidebar menu items and the
-     keyboard shortcut;
+     loaded, the slim toolbar (back, forward, reload, address bar), the three sidebar
+     modes (with a screenshot of each) with the reload button working in each, the
+     auto-hide reveal in the 14 px strip at the left edge (the real X pointer with
+     xdotool when installed), the sidebar menu items and the keyboard shortcut. A local web server on 127.0.0.1 serves the test pages;
   4. after the idle time the browser has checked for updates on its own (the update
      timer fired; the check itself finds no network here);
   5. the browser quits cleanly (exit code 0), and the profile on disk agrees
@@ -31,6 +31,8 @@ Writes report.json, report.md and screenshots to --out. Exits 1 if a check fails
 """
 
 import argparse
+import functools
+import http.server
 import json
 import os
 import re
@@ -38,6 +40,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -229,6 +232,61 @@ return {
 };
 """
 
+LOAD_JS = r"""
+const [url] = args;
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+gBrowser.selectedBrowser.fixupAndLoadURIString(url, {
+  triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+});
+for (let i = 0; i < 50; i++) {
+  await sleep(200);
+  if (gBrowser.selectedBrowser.currentURI.spec == url && !gBrowser.selectedBrowser.webProgress?.isLoadingDocument) {
+    break;
+  }
+}
+return gBrowser.selectedBrowser.currentURI.spec;
+"""
+
+TOOLBAR_JS = r"""
+// The toolbar row (WhisperToolbar.sys.mjs): what is placed and what shows.
+const { CustomizableUI } = ChromeUtils.importESModule("moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs");
+const shown = id => {
+  const e = document.getElementById(id);
+  return !!e && e.getBoundingClientRect().width > 0 && getComputedStyle(e).visibility != "hidden";
+};
+return {
+  placements: CustomizableUI.getWidgetIdsInArea("nav-bar"),
+  shown: ["sidebar-button", "back-button", "forward-button", "reload-button", "stop-button", "urlbar-container",
+          "home-button", "firefox-view-button", "fxa-toolbar-menu-button", "alltabs-button", "new-tab-button",
+          "unified-extensions-button", "PanelUI-menu-button"].filter(shown),
+  layoutVersion: Services.prefs.getIntPref("whisper.toolbar.layoutVersion", 0),
+  navbarHeight: Math.round(document.getElementById("nav-bar").getBoundingClientRect().height),
+};
+"""
+
+RELOAD_JS = r"""
+// Clicks the toolbar's reload button and checks that the page loaded again.
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const browser = gBrowser.selectedBrowser;
+for (let i = 0; i < 25 && browser.webProgress?.isLoadingDocument; i++) {
+  await sleep(200);
+}
+const button = document.getElementById("reload-button");
+if (!button || !button.getBoundingClientRect().width) {
+  return { shown: false };
+}
+const before = browser.browsingContext.currentWindowGlobal?.innerWindowId;
+const r = button.getBoundingClientRect();
+window.synthesizeMouseEvent("mousedown", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
+window.synthesizeMouseEvent("mouseup", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
+let after = before;
+for (let i = 0; i < 25 && after == before; i++) {
+  await sleep(200);
+  after = browser.browsingContext.currentWindowGlobal?.innerWindowId;
+}
+return { shown: true, reloaded: after != before, url: browser.currentURI.spec };
+"""
+
 MENU_JS = r"""
 const [x, y] = args;
 const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -323,6 +381,34 @@ await sleep(1500);
 const after = Services.prefs.getStringPref("whisper.sidebar.mode", "");
 return { before, after };
 """
+
+
+class LocalSite:
+    """Test pages served on 127.0.0.1 (the test's network namespace has loopback only),
+    so page-level checks run without any network."""
+
+    PAGES = {
+        "page.html": "<!doctype html><title>Whisper test page</title><h1>Whisper test page</h1>"
+                     "<p id=loaded>loaded</p>",
+    }
+
+    def __init__(self):
+        self.root = tempfile.mkdtemp(prefix="whisper-site-")
+        for name, body in self.PAGES.items():
+            with open(os.path.join(self.root, name), "w", encoding="utf-8") as f:
+                f.write(body)
+        handler = functools.partial(_QuietHandler, directory=self.root)
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+
+    def url(self, name):
+        return f"{self.base}/{name}"
+
+
+class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
 
 
 class Pointer:
@@ -530,6 +616,26 @@ def main():
         sc = m.run(SHORTCUT_JS)
         report.check("the shortcut switches the mode", sc["before"] == "expanded" and sc["after"] == "compact", sc)
 
+        # The toolbar: one slim row with reload after back and forward, set once per
+        # profile (WhisperToolbar.sys.mjs); 0.1.0 had lost the reload button.
+        tb = m.run(TOOLBAR_JS)
+        report.facts["toolbar"] = tb
+        place = tb["placements"]
+        report.check("toolbar: back, forward and reload come first, then the address bar",
+                     [i for i in place if i in ("back-button", "forward-button", "stop-reload-button",
+                                                "urlbar-container")]
+                     == ["back-button", "forward-button", "stop-reload-button", "urlbar-container"]
+                     and place.index("stop-reload-button") < place.index("urlbar-container"), place)
+        report.check("toolbar: no home, Firefox View, account, list-all-tabs or new tab buttons",
+                     not set(tb["shown"]) & {"home-button", "firefox-view-button", "fxa-toolbar-menu-button",
+                                             "alltabs-button", "new-tab-button", "sidebar-button"}, tb["shown"])
+        report.check("toolbar: the layout is set once (whisper.toolbar.layoutVersion)", tb["layoutVersion"] >= 1,
+                     tb["layoutVersion"])
+
+        site = LocalSite()
+        page = site.url("page.html")
+        report.check("a local test page loads", m.run(LOAD_JS, page) == page, page)
+
         pointer = Pointer(m)
         report.facts["pointer"] = "xdotool" if pointer.xdotool else "synthesized"
         widths = {}
@@ -538,6 +644,9 @@ def main():
             report.facts[f"mode_{mode}"] = st
             widths[mode] = st["width"]
             capture(m, os.path.join(a.out, f"{i}-{mode}.png"), report)
+            rl = m.run(RELOAD_JS)
+            report.check(f"{mode}: the reload button shows and reloads the page",
+                         rl.get("shown") and rl.get("reloaded"), rl)
             if mode == "autohide":
                 report.check("auto-hide: sidebar collapses to an edge strip",
                              st["visibility"] == "expand-on-hover" and not st["expanded"] and st["width"] <= 16, st)

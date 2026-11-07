@@ -25,7 +25,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   CustomizableUI:
     "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
+  WhisperLayout: "moz-src:///browser/components/whisper/WhisperLayout.sys.mjs",
   WhisperSidebar: "moz-src:///browser/components/whisper/WhisperSidebar.sys.mjs",
+  WhisperToolbar: "moz-src:///browser/components/whisper/WhisperToolbar.sys.mjs",
 });
 
 const CAST_CHROME_SHEET = "chrome://browser/content/whisper/cast.css";
@@ -63,6 +65,7 @@ export const WhisperUI = {
     }
     this._initialized = true;
     guarded("page colours", () => this._registerPageSheet());
+    guarded("toolbar layout", () => lazy.WhisperToolbar.init());
   },
 
   /** Before the window's first layout: styles must be in place before anything paints. */
@@ -73,6 +76,7 @@ export const WhisperUI = {
         Ci.nsIDOMWindowUtils.AUTHOR_SHEET
       )
     );
+    guarded("layout attributes", () => lazy.WhisperLayout.initWindow(win));
     guarded("sidebar mode attribute", () =>
       lazy.WhisperSidebar.markWindow(win)
     );
@@ -91,6 +95,7 @@ export const WhisperUI = {
     guarded("sidebar modes cleanup", () =>
       lazy.WhisperSidebar.uninitWindow(win)
     );
+    guarded("layout cleanup", () => lazy.WhisperLayout.uninitWindow(win));
   },
 
   /**
