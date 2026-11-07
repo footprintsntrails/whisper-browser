@@ -142,7 +142,7 @@ pub extern "C" fn clipguard_is_visible(
     candidates: &ThinVec<nsString>,
 ) -> bool {
     let cmd = string(command);
-    let texts: Vec<String> = candidates.iter().map(string).collect();
+    let texts: Vec<String> = candidates.iter().map(|s| string(s)).collect();
     ffi_guard(false, || clipguard::is_visible(&cmd, &texts))
 }
 
