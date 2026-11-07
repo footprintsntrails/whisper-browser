@@ -914,8 +914,14 @@ def test_cleanlinks(b, base, report):
                  url.startswith("http://localhost:") and url.endswith("/landing.html?id=7"), url)
     b.navigate(f"{base}/cleanlinks.html")
     b.chrome(SET_CLIPBOARD_JS, "nothing copied yet")
-    right_click(b, "out")
-    items = b.chrome(COPY_LINK_JS)
+    # CI runners are slower than the sandbox: retry the right-click if the menu did not
+    # open within COPY_LINK_JS's 3 s wait.
+    for _attempt in range(3):
+        right_click(b, "out")
+        items = b.chrome(COPY_LINK_JS)
+        if not items.get("error"):
+            break
+        time.sleep(2)
     copied = b.chrome(CLIPBOARD_JS)
     report.facts["cleanlinks_copy"] = {"items": items, "copied": copied}
     report.check("cleanlinks: Copy Link copies the clean link (Copy Clean Link stays in the menu)",
