@@ -60,7 +60,7 @@ jobs:
         run: |
           find gecko/overlay/browser/components/whisper/security gecko/tests -name '*.mjs' -print0 |
             xargs -0 -n1 node --check
-          node --test gecko/tests/security/
+          node --test gecko/tests/security/*.test.mjs
       - name: Desktop entry
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q desktop-file-utils

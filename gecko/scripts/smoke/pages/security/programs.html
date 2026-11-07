@@ -15,8 +15,8 @@
 <a id="unknown" href="whisper-no-such-program:hello">A program that is not installed</a>
 <a id="known" href="whispertest:hello">Open in the test program</a>
 <script>
-  // With #auto, the page tries to open the program by itself, with no click.
-  if (location.hash == "#auto") {
+  // With ?auto, the page tries to open the program by itself, with no click.
+  if (location.search == "?auto") {
     setTimeout(() => { location.href = "whispertest:no-click"; }, 300);
   }
 </script>

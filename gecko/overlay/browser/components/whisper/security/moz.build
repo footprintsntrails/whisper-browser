@@ -3,13 +3,13 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Whisper's security features: input guards (recovery phrases, swapped addresses),
-# the download check, external programs, clean links, panic and burn, and the log of
-# Whisper's own connections. All new files; loaded from WhisperSecurity.manifest
-# through the same window lifecycle categories as the rest of Whisper.
+# the download check, external programs and clean links. All new files; loaded from
+# WhisperSecurity.manifest through the same window lifecycle categories as the rest
+# of Whisper.
 #
-#   0-whisper-security.js          default (and locked) prefs; reasons in gecko/prefs-manifest.json
+#   0-whisper-security.js          default (and locked) prefs, each with its reason
 #   WhisperSecurity.manifest       registers WhisperSecurity with Firefox's categories
-#   WhisperSecurity.sys.mjs        entry point: actors, hooks, shortcuts, menus
+#   WhisperSecurity.sys.mjs        entry point: the input actor and the download hook
 #   WhisperInputGuard*.sys.mjs     the page-input actor (content process) and its parent
 #   SeedPhrase, SeedWordlists      recovery phrase detection (BIP39 lists, Electrum)
 #   CryptoAddress, WhisperHash     address recognition and comparison; SHA-2 helpers

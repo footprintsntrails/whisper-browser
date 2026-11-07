@@ -16,9 +16,17 @@ is driven over Marionette. Checks:
                reaches the page; normal text does; holding the button allows one field
   address      a pasted address that differs from the copied one is stopped and both
                are shown; pasting the copied address itself passes
-  programs     links to blocked schemes (ms-*, search-ms) and to a program that is not
-               installed do nothing, and nothing opens without a click; a click on a
-               link to an installed program asks, naming the program and its path
+  programs     links to blocked schemes (ms-*, search-ms, which get a program here so
+               the block is Whisper's) and to a program that is not installed do
+               nothing, and nothing opens without a click; a click on a link to an
+               installed program asks, naming the program and its path; Cancel starts
+               nothing, Open works only a second after the dialog has the focus
+  cleanlinks   following a link to another site drops utm_*, fbclid and gclid but keeps
+               the real parameter; Copy Link copies the clean link
+  settings     the settings fragment (settings/whisper-security-settings.mjs) renders
+               in about:preferences with every switch on and its text, the address
+               guard's text says outside copies can't be compared, nothing says
+               "protected"
   downloads    the guard engine (Rust as WebAssembly in a worker) runs; a disc image,
                a disguised program, a program named as a picture and a ZIP holding a
                program are held (no file in Downloads), a PDF is not; a held file is
@@ -349,14 +357,46 @@ HANDLER_JS = r"""
 // A program for the test scheme "whispertest:", as if one were installed: /bin/true.
 const eps = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService);
 const hs = Cc["@mozilla.org/uriloader/handler-service;1"].getService(Ci.nsIHandlerService);
-const info = eps.getProtocolHandlerInfo("whispertest");
-const app = Cc["@mozilla.org/uriloader/local-handler-app;1"].createInstance(Ci.nsILocalHandlerApp);
-app.executable = new FileUtils.File("/bin/true");
-app.name = "Whisper Test Program";
-info.preferredApplicationHandler = app;
-info.preferredAction = Ci.nsIHandlerInfo.useHelperApp;
-info.alwaysAskBeforeHandling = false;
-hs.store(info);
+// The blocked schemes get one too, so that the block is Whisper's and not Firefox's
+// "no program for this" (on Linux nothing handles search-ms: or ms-*: at all).
+// The program writes what it was started with into the profile, so the test can tell.
+const program = PathUtils.join(PathUtils.profileDir, "whisper-test-program.sh");
+const ran = PathUtils.join(PathUtils.profileDir, "whisper-test-program-ran.txt");
+await IOUtils.writeUTF8(program, `#!/bin/sh\necho "$1" >> '${ran}'\n`);
+await IOUtils.setPermissions(program, 0o700);
+for (const scheme of ["whispertest", "search-ms", "ms-whispertest"]) {
+  const info = eps.getProtocolHandlerInfo(scheme);
+  const app = Cc["@mozilla.org/uriloader/local-handler-app;1"].createInstance(Ci.nsILocalHandlerApp);
+  app.executable = new FileUtils.File(program);
+  app.name = "Whisper Test Program";
+  info.preferredApplicationHandler = app;
+  info.preferredAction = Ci.nsIHandlerInfo.useHelperApp;
+  info.alwaysAskBeforeHandling = false;
+  hs.store(info);
+}
+return program;
+"""
+
+PROGRAM_RAN_JS = r"""
+// What the test program was started with ("" when it never ran).
+const [waitMs] = args;
+const ran = PathUtils.join(PathUtils.profileDir, "whisper-test-program-ran.txt");
+for (let i = 0; i <= waitMs / 100; i++) {
+  if (await IOUtils.exists(ran)) {
+    return (await IOUtils.readUTF8(ran)).trim();
+  }
+  await new Promise(r => setTimeout(r, 100));
+}
+return "";
+"""
+
+REFOCUS_JS = r"""
+// The tab dialog's window loses and gets back the focus (as when the user switches to
+// another window and back).
+const d = gBrowser.getTabDialogBox(gBrowser.selectedBrowser)._tabDialogManager._topDialog;
+const w = d.frameContentWindow;
+w.dispatchEvent(new w.FocusEvent("blur"));
+w.dispatchEvent(new w.FocusEvent("focus"));
 return true;
 """
 
@@ -368,12 +408,120 @@ const box = gBrowser.getTabDialogBox(gBrowser.selectedBrowser);
 for (let i = 0; i < waitMs / 100; i++) {
   const d = box._tabDialogManager._topDialog ?? box.getContentDialogManager?.()._topDialog;
   if (d || window.gDialogBox?.isOpen) {
-    await d?._dialogReady;
+    await Promise.race([d?._dialogReady, sleep(3000)]);
     return { open: true, url: d?.frameContentWindow?.document.documentURI ?? "window dialog" };
   }
   await sleep(100);
 }
 return { open: false };
+"""
+
+CLIPBOARD_JS = r"""
+const trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
+trans.init(null);
+trans.addDataFlavor("text/plain");
+Services.clipboard.getData(trans, Ci.nsIClipboard.kGlobalClipboard);
+const out = {};
+try {
+  trans.getTransferData("text/plain", out);
+  return out.value.QueryInterface(Ci.nsISupportsString).data;
+} catch (e) {
+  return null;
+}
+"""
+
+COPY_LINK_JS = r"""
+// Right-click the link like a user and choose Copy Link.
+const [x, y] = args;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const menu = document.getElementById("contentAreaContextMenu");
+const shown = new Promise(r => menu.addEventListener("popupshown", r, { once: true }));
+const box = gBrowser.selectedBrowser.getBoundingClientRect();
+window.synthesizeMouseEvent("contextmenu", box.left + x, box.top + y, { button: 2 });
+await Promise.race([shown, sleep(3000)]);
+if (menu.state != "open") {
+  return { error: "the context menu did not open" };
+}
+const visible = id => !document.getElementById(id).hidden;
+const items = { copyLink: visible("context-copylink"), copyClean: visible("context-stripOnShareLink") };
+document.getElementById("context-copylink").doCommand();
+menu.hidePopup();
+await sleep(300);
+return items;
+"""
+
+LINK_RECT_JS = """
+const r = document.getElementById(arguments[0]).getBoundingClientRect();
+return [r.left + r.width / 2, r.top + r.height / 2];
+"""
+
+URL_JS = "return gBrowser.selectedBrowser.currentURI.spec;"
+
+SETTINGS_JS = r"""
+// Loads the settings fragment into about:preferences, as the Whisper pane will, renders
+// its groups and returns what each shows.
+const [groups] = args;
+const HTML = "http://www.w3.org/1999/xhtml";
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const tab = gBrowser.addTrustedTab("about:preferences");
+gBrowser.selectedTab = tab;
+let win = null;
+for (let i = 0; i < 150; i++) {
+  win = tab.linkedBrowser.contentWindow;
+  if (win?.document.readyState == "complete" && win.SettingGroupManager && win.Preferences) {
+    break;
+  }
+  await sleep(100);
+}
+const doc = win.document;
+doc.l10n.addResourceIds(["whisper/whisper-security-settings.ftl"]);
+// As SettingPaneManager loads a pane's module: into the page's own module map.
+win.ChromeUtils.importESModule(
+  "chrome://browser/content/whisper/security/settings/whisper-security-settings.mjs",
+  { global: "current" }
+);
+const shown = {};
+const elements = [];
+for (const id of groups) {
+  const config = win.SettingGroupManager.get(id);
+  if (!config) {
+    shown[id] = null;
+    continue;
+  }
+  const group = doc.createElementNS(HTML, "setting-group");
+  group.setAttribute("groupid", id);
+  group.config = config;
+  group.getSetting = win.Preferences.getSetting.bind(win.Preferences);
+  (doc.getElementById("mainPrefPane") ?? doc.documentElement).append(group);
+  elements.push([id, group]);
+}
+await sleep(1500);
+const walk = (node, found) => {
+  for (const el of node.querySelectorAll("*")) {
+    found.push(el);
+    if (el.shadowRoot) {
+      walk(el.shadowRoot, found);
+    }
+  }
+  return found;
+};
+for (const [id, group] of elements) {
+  const all = walk(group, []);
+  const attr = (el, name) => el[name] ?? el.getAttribute(name) ?? "";
+  shown[id] = {
+    label: attr(all.find(el => el.localName == "moz-fieldset") ?? group, "label"),
+    description: attr(all.find(el => el.localName == "moz-fieldset") ?? group, "description"),
+    checkboxes: all.filter(el => el.localName == "moz-checkbox").map(el => ({
+      label: attr(el, "label"),
+      description: attr(el, "description"),
+      checked: !!el.checked,
+      hidden: el.closest("setting-control")?.hidden ?? false,
+    })),
+    messages: all.filter(el => el.localName == "moz-message-bar").map(el => attr(el, "message")),
+  };
+}
+gBrowser.removeTab(tab);
+return shown;
 """
 
 CONSOLE_JS = r"""
@@ -427,6 +575,18 @@ class Browser:
         self.proc = subprocess.Popen([os.path.join(app, "whisper"), "--marionette", "--no-remote",
                                       "--profile", self.profile], stdout=self.log, stderr=subprocess.STDOUT, env=e)
         self.m = Marionette(alive=lambda: self.proc.poll() is None)
+        if os.environ.get("WHISPER_TEST_TRACE"):
+            # Every Marionette command and how long it took, to find a hang.
+            command = self.m.command
+
+            def traced(name, params=None):
+                started = time.time()
+                print(f"  -> {name}", flush=True)
+                try:
+                    return command(name, params)
+                finally:
+                    print(f"  <- {name} {time.time() - started:.1f}s", flush=True)
+            self.m.command = traced
         self.m.start_session()
         self.m.command("WebDriver:SetWindowRect", {"x": 0, "y": 0, "width": 1280, "height": 900})
         time.sleep(3)
@@ -442,11 +602,16 @@ class Browser:
         finally:
             self.m.command("Marionette:SetContext", {"value": "chrome"})
 
-    def navigate(self, url):
+    def navigate(self, url, timeout=None):
+        """`timeout` (seconds) replaces the socket timeout for this one load."""
         self.m.command("Marionette:SetContext", {"value": "content"})
+        old = self.m.sock.gettimeout()
+        if timeout:
+            self.m.sock.settimeout(timeout)
         try:
             self.m.command("WebDriver:Navigate", {"url": url})
         finally:
+            self.m.sock.settimeout(old)
             self.m.command("Marionette:SetContext", {"value": "chrome"})
 
     def type_into(self, element_id, text):
@@ -641,7 +806,7 @@ def click(b, element_id):
 
 
 def test_programs(b, base, report, out):
-    b.chrome(HANDLER_JS)
+    program = b.chrome(HANDLER_JS)
     b.navigate(f"{base}/programs.html")
     for link, what in [("officecmd", "ms-officecmd"), ("searchms", "search-ms"), ("msother", "another ms-* scheme"),
                        ("unknown", "a scheme no program handles")]:
@@ -651,10 +816,12 @@ def test_programs(b, base, report, out):
         if d.get("open"):
             b.chrome(CLICK_JS, "button.primary")
     # No click: a page script sends the tab to the installed program's scheme.
-    b.navigate(f"{base}/programs.html#auto")
+    b.navigate(f"{base}/programs.html?auto")
     d = b.chrome(ANY_DIALOG_JS, 2000)
     report.check("programs: without a click nothing opens and nothing asks, even for an installed program",
                  not d.get("open"), d)
+    ran = b.chrome(PROGRAM_RAN_JS, 500)
+    report.check("programs: none of these started a program (search-ms and ms-* do have one here)", ran == "", ran)
     b.navigate(f"{base}/programs.html")
     click(b, "known")
     d = b.chrome(DIALOG_JS, 3000)
@@ -662,11 +829,69 @@ def test_programs(b, base, report, out):
     body = (d.get("lead") or "") + " " + (d.get("body") or "")
     report.check("programs: a click on a link to an installed program asks, naming the exact site, "
                  "the program and its full path",
-                 d.get("open") and base in body and "Whisper Test Program" in body and "/bin/true" in body
+                 d.get("open") and base in body and "Whisper Test Program" in body and program in body
                  and d.get("focused") == "Cancel", d)
+    open_button = "#guard-actions button:not(.primary)"
+    # Marionette's click waits seconds for a page load, so the dialog has been open for
+    # longer than a second by now; the same delay starts again whenever the dialog's
+    # window gets the focus back, which is what this checks.
+    b.chrome(REFOCUS_JS)
+    b.chrome(CLICK_JS, open_button)
+    report.check("programs: Open does nothing for a second after the dialog gets the focus",
+                 b.chrome(DIALOG_JS, 300).get("open") and b.chrome(PROGRAM_RAN_JS, 0) == "")
     capture(b, os.path.join(out, "program-dialog.png"))
     b.chrome(CLICK_JS, "button.primary")
-    report.check("programs: Cancel closes it", not b.chrome(DIALOG_JS, 300).get("open"))
+    report.check("programs: Cancel closes it and the program does not start",
+                 not b.chrome(DIALOG_JS, 300).get("open") and b.chrome(PROGRAM_RAN_JS, 1000) == "")
+    click(b, "known")
+    b.chrome(DIALOG_JS, 3000)
+    time.sleep(1.5)
+    b.chrome(CLICK_JS, open_button)
+    ran = b.chrome(PROGRAM_RAN_JS, 3000)
+    report.check("programs: after a second Open starts the program with the link", ran == "whispertest:hello", ran)
+
+
+SETTINGS_GROUPS = ["whisperRecoveryPhrase", "whisperSwappedAddress", "whisperDownloads", "whisperPrograms",
+                   "whisperCleanLinks"]
+
+
+def test_settings(b, report):
+    shown = b.chrome(SETTINGS_JS, SETTINGS_GROUPS)
+    report.facts["settings"] = shown
+    missing = [g for g in SETTINGS_GROUPS if not shown.get(g) or not shown[g]["checkboxes"]]
+    report.check("settings: every group of the fragment renders in about:preferences, with its switches",
+                 not missing, missing or shown)
+    text = json.dumps(shown, ensure_ascii=False)
+    untranslated = [g for g in SETTINGS_GROUPS if not shown.get(g) or not shown[g]["messages"]
+                    or not all(shown[g]["messages"]) or not all(c["label"] for c in shown[g]["checkboxes"])]
+    report.check("settings: every switch and every limits note has its text", not untranslated, untranslated)
+    report.check("settings: each feature is on by default",
+                 all(c["checked"] for g in SETTINGS_GROUPS for c in (shown.get(g) or {}).get("checkboxes", [])
+                     if not c["hidden"]), shown)
+    address = json.dumps(shown.get("whisperSwappedAddress"))
+    report.check("settings: the address guard says copies outside Whisper can't be compared",
+                 "copied in another program" in address and "can't be compared" in address, address)
+    report.check("settings: no text claims the user is protected or safe",
+                 not re.search(r"\b(protected|you're safe|you are safe|keeps you safe)\b", text, re.I), text)
+
+
+def test_cleanlinks(b, base, report):
+    b.navigate(f"{base}/cleanlinks.html")
+    click(b, "out")
+    time.sleep(2)
+    url = b.chrome(URL_JS)
+    report.facts["cleanlinks_url"] = url
+    report.check("cleanlinks: following a link to another site drops utm_*, fbclid and gclid, keeps id",
+                 url.startswith("http://localhost:") and url.endswith("/landing.html?id=7"), url)
+    b.navigate(f"{base}/cleanlinks.html")
+    x, y = b.content(LINK_RECT_JS, "out")
+    b.chrome(SET_CLIPBOARD_JS, "nothing copied yet")
+    items = b.chrome(COPY_LINK_JS, x, y)
+    copied = b.chrome(CLIPBOARD_JS)
+    report.facts["cleanlinks_copy"] = {"items": items, "copied": copied}
+    report.check("cleanlinks: Copy Link copies the clean link (Copy Clean Link stays in the menu)",
+                 isinstance(copied, str) and copied.endswith("/landing.html?id=7") and "utm_" not in copied
+                 and items.get("copyClean"), {"items": items, "copied": copied})
 
 
 def test_environment(app, out, report):
@@ -713,6 +938,12 @@ def main():
     try:
         b = Browser(a.app, a.out, "security")
         try:
+            # On a fresh profile uBlock Origin holds every request until its filter lists
+            # are loaded, which can take minutes on a slow machine: the first page waits
+            # for that, so the tests below do not run into it.
+            started = time.time()
+            b.navigate(f"{base}/landing.html", timeout=600)
+            report.facts["first_page_load_seconds"] = round(time.time() - started, 1)
             if want("prefs"):
                 test_prefs(b, report)
             if want("seed"):
@@ -723,8 +954,12 @@ def main():
                 test_programs(b, base, report, a.out)
             if want("downloads"):
                 test_downloads(b, base, report)
-        except MarionetteError as e:
-            report.check("Marionette session", False, e)
+            if want("cleanlinks"):
+                test_cleanlinks(b, base, report)
+            if want("settings"):
+                test_settings(b, report)
+        except (MarionetteError, OSError) as e:
+            report.check("Marionette session", False, repr(e))
         finally:
             try:
                 report.facts["security_state"] = b.chrome(STATE_JS)

@@ -6,9 +6,8 @@
 // defaults/preferences/0-whisper-security.js). They load after 0-whisper.js (Firefox
 // reads the files of a directory in reverse alphabetical order), so a value here wins.
 //
-// Every pref has a "why" in gecko/prefs-manifest.json; gecko/scripts/check-prefs.py
-// fails CI when a pref has no reason, or when a Firefox pref named here no longer
-// exists in the Firefox version being built.
+// Every pref says why it is set. (A manifest of these reasons with a CI check that each
+// Firefox pref still exists comes with 0.3.0.)
 //
 // pref(name, value)          a default; Settings or about:config can change it.
 // pref(name, value, locked)  fixed; nothing can change it.
@@ -123,3 +122,23 @@ pref("network.protocol-handler.external.help", false, locked);
 pref("network.protocol-handler.external.applescript", false, locked);
 pref("network.protocol-handler.external.osascript", false, locked);
 
+// --- Clean links (patches/0066, 0067) ----------------------------------------------
+// Tracking parameters are removed from a link when you follow it to another site
+// (Firefox's query stripping, normal and private windows) and when you copy it.
+pref("privacy.query_stripping.enabled", true);
+pref("privacy.query_stripping.enabled.pbmode", true);
+pref("privacy.query_stripping.strip_on_share.enabled", true);
+// The list, kept here instead of Mozilla's remote one (patches/0066). Only names that
+// mean "who sent you here" on every site; each can break a site only by what it
+// carried (attribution, a personalised landing page, some mailing-list "unsubscribe"
+// or "preferences" links). Matched without regard to case.
+// Known to break: the "manage preferences" and "unsubscribe" pages of mailing-list
+// services no longer recognise the reader and ask for the address (Mailchimp mc_eid,
+// HubSpot _hsenc/_hsmi, Marketo mkt_tok, MailerLite ml_subscriber*, Omeda oly_*_id,
+// Vero vero_id); ad and affiliate credit for the site you visit is lost (gclid,
+// msclkid, fbclid, ...). Other pages work without them.
+pref("privacy.query_stripping.strip_list", "utm_source utm_medium utm_campaign utm_term utm_content utm_id utm_name utm_cid utm_reader utm_referrer utm_social utm_social-type utm_brand utm_place utm_pubreferrer utm_swu utm_viz_id utm_campaign_id utm_source_platform utm_creative_format utm_marketing_tactic fbclid gclid gclsrc gbraid wbraid dclid msclkid yclid ysclid twclid ttclid igshid igsh li_fat_id epik sccid rb_clickid wickedid mc_cid mc_eid _hsenc _hsmi __hssc __hstc __hsfp hsctatracking mkt_tok oly_anon_id oly_enc_id __s vero_id vero_conv _openstat _kx ml_subscriber ml_subscriber_hash");
+// No list from Remote Settings (patches/0066): set to true to use Mozilla's as well.
+pref("whisper.cleanlinks.remote_list", false);
+// Copy Link in the page menu copies the clean link (patches/0067).
+pref("whisper.cleanlinks.copy_link_clean", true);

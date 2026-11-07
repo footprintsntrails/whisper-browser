@@ -1,0 +1,16 @@
+<!doctype html>
+<!-- Test page for clean links (security_test.py): a link to another site (localhost,
+     not 127.0.0.1) carrying tracking parameters and one real parameter. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Clean links test</title>
+<style>body { font: 16px sans-serif; margin: 2em; } a { font-size: 24px; }</style></head>
+<body>
+<h1>Links</h1>
+<p><a id="out" href="LANDING">Read the article on the other site</a></p>
+<script>
+  // The other site is the same server under another name.
+  const other = `http://localhost:${location.port}/landing.html?utm_source=newsletter&utm_medium=email&fbclid=IwAR0abc&gclid=Cj0K&id=7`;
+  document.getElementById("out").href = other;
+</script>
+</body>
+</html>

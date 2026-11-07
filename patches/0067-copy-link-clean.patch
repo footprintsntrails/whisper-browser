@@ -1,0 +1,47 @@
+Whisper: Copy Link copies the clean link
+
+What: the page context menu's Copy Link (and Copy Link to Highlight) removes the
+tracking parameters that Copy Clean Link removes (Firefox's strip-on-share lists plus
+privacy.query_stripping.strip_list), unless whisper.cleanlinks.copy_link_clean is off.
+Copy Clean Link stays in the menu.
+Why: a copied link is usually pasted somewhere else, where its utm_*, fbclid, gclid and
+the like tell the next site where it came from; the clean copy should be the default,
+not an extra item one has to know about. Only the copy changes; the page is untouched.
+---
+diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
+--- a/browser/base/content/nsContextMenu.sys.mjs
++++ b/browser/base/content/nsContextMenu.sys.mjs
+@@ -70,6 +70,14 @@
+   false
+ );
+ 
++// Whisper: Copy Link copies the clean link.
++XPCOMUtils.defineLazyPreferenceGetter(
++  lazy,
++  "WHISPER_COPY_LINK_CLEAN",
++  "whisper.cleanlinks.copy_link_clean",
++  false
++);
++
+ XPCOMUtils.defineLazyPreferenceGetter(
+   lazy,
+   "gPrintEnabled",
+@@ -2345,6 +2353,18 @@
+   copyLink(url = this.linkURL) {
+     // If we're in a view source tab, remove the view-source: prefix
+     let linkURL = url.replace(/^view-source:/, "");
++    // Whisper: without the tracking parameters Copy Clean Link removes. A link that
++    // does not parse is copied as it is.
++    if (lazy.WHISPER_COPY_LINK_CLEAN && lazy.STRIP_ON_SHARE_ENABLED) {
++      try {
++        const stripped = lazy.QueryStringStripper.stripForCopyOrShare(
++          Services.io.newURI(linkURL)
++        );
++        if (stripped) {
++          linkURL = stripped.spec;
++        }
++      } catch (e) {}
++    }
+     lazy.clipboard.copyString(
+       linkURL,
+       this.actor.manager.browsingContext.currentWindowGlobal
