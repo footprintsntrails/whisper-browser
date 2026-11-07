@@ -38,13 +38,15 @@ CANARY_BRANDING = os.path.join(REPO, "gecko", "variants", "canary", "branding")
 # (omni.ja relative to APP_DIR, path inside it, source relative to gecko/overlay)
 # Whisper.manifest is not here: the packager merges it into the jar's chrome.manifest.
 FILES = [
-    ("browser/omni.ja", "chrome/browser/content/browser/whisper/cast.css", f"{WHISPER}/content/cast.css"),
-    ("browser/omni.ja", "chrome/browser/content/browser/whisper/cast-pages.css", f"{WHISPER}/content/cast-pages.css"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/cast.css", f"{WHISPER}/content/cast.css"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/cast-pages.css", f"{WHISPER}/content/cast-pages.css"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/aboutDialog.css", f"{WHISPER}/content/aboutDialog.css"),
     ("browser/omni.ja", "defaults/preferences/0-whisper.js", f"{WHISPER}/0-whisper.js"),
     ("browser/omni.ja", "localization/en-US/whisper/whisper.ftl", f"{WHISPER}/locales/en-US/whisper.ftl"),
-    ("browser/omni.ja", "chrome/browser/content/branding/aboutDialog.css", f"{BRANDING}/content/aboutDialog.css"),
     ("browser/omni.ja", "chrome/browser/content/branding/about.png", f"{BRANDING}/content/about.png"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperUI.sys.mjs", f"{WHISPER}/WhisperUI.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperAbout.sys.mjs", f"{WHISPER}/WhisperAbout.sys.mjs"),
+    ("browser/omni.ja", "localization/en-US/whisper/whisper-about.ftl", f"{WHISPER}/locales/en-US/whisper-about.ftl"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperSidebar.sys.mjs", f"{WHISPER}/WhisperSidebar.sys.mjs"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperLayout.sys.mjs", f"{WHISPER}/WhisperLayout.sys.mjs"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperToolbar.sys.mjs", f"{WHISPER}/WhisperToolbar.sys.mjs"),

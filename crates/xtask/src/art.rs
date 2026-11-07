@@ -255,12 +255,21 @@ fn wordmark(fonts: &Path, fill: &str) -> Result<String, String> {
     if paths.is_empty() {
         return Err("Inter did not produce any outlines".into());
     }
+    // Web pages can load the branding wordmarks (chrome://branding/ is content
+    // accessible) and measure them, so the viewBox has the aspect ratio of Firefox's
+    // own wordmark (0 0 359 80): the outlines are centred in it.
+    let (x, y) = (x0.floor(), y0.floor());
+    let (w, h) = ((x1 - x).ceil(), (y1 - y).ceil());
+    let firefox = 359.0 / 80.0;
+    let (x, y, w, h) = if w / h < firefox {
+        let wide = h * firefox;
+        (x - (wide - w) / 2.0, y, wide, h)
+    } else {
+        let tall = w / firefox;
+        (x, y - (tall - h) / 2.0, w, tall)
+    };
     Ok(format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{x:.1} {y:.1} {w:.1} {h:.1}\">\n<title>Whisper</title>\n{paths}</svg>\n",
-        x = x0.floor(),
-        y = y0.floor(),
-        w = (x1 - x0.floor()).ceil(),
-        h = (y1 - y0.floor()).ceil(),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{x:.4} {y:.4} {w:.4} {h:.4}\">\n<title>Whisper</title>\n{paths}</svg>\n"
     ))
 }
 
@@ -340,7 +349,16 @@ fn branding_images(
     for (file, px) in [("about-logo.png", 192), ("about-logo@2x.png", 384)] {
         save_png(&render(&logos.master, px, px, None)?, &content.join(file))?;
     }
-    fsutil::write(&content.join("about-logo.svg"), &logos.master)?;
+    // As large as Firefox's own about-logo.svg (512 px): web pages can load and
+    // measure it.
+    fsutil::write(
+        &content.join("about-logo.svg"),
+        logos.master.replacen(
+            r#"width="256" height="256""#,
+            r#"width="512" height="512""#,
+            1,
+        ),
+    )?;
 
     // about.png (300×236): logo over the name on a Whisper-black card, for pages that
     // show a single brand image (about:logo); readable on light and dark pages alike.

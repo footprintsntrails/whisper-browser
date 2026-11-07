@@ -56,3 +56,8 @@ WhisperLayout.setSpaceColor(win, "#2a2340"); // null goes back to Cast black
   feature leaves the others and the browser working.
 - Code that runs in web content (window actors) loads lazily and only on the pages that
   need it.
+- Web pages must not be able to tell Whisper from Firefox by the browser files they can
+  load: Whisper's own chrome files live in `chrome://whisper/`, which pages cannot load
+  (see `jar.mn`), and a changed copy of a Firefox file in a content-accessible package
+  (`chrome://browser/`, `chrome://global/`, `chrome://branding/`, ...) is a tell, so such
+  files are not patched; `gecko/scripts/webexposed.py` compares the build with Firefox.

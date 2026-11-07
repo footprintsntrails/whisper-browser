@@ -158,6 +158,16 @@ jobs:
         run: |
           gecko/scripts/smoke/run-smoke.sh "$RUNNER_TEMP/app/whisper" \
             gecko/overlay/browser/components/whisper/0-whisper.js "$RUNNER_TEMP/smoke" "$FIREFOX_VERSION"
+      # Web pages can try to load chrome:// and resource:// files; whatever answers must
+      # be exactly what Firefox of the same version answers, or a page could tell Whisper
+      # apart (gecko/scripts/webexposed.py; the smoke test probes the same from a page).
+      - name: Web pages see Firefox's browser files, not Whisper's
+        run: |
+          gecko/scripts/fetch-source.sh "$RUNNER_TEMP/firefox" --firefox-linux
+          mkdir -p "$RUNNER_TEMP/firefox/app"
+          tar -xJf "$RUNNER_TEMP/firefox/firefox-$FIREFOX_VERSION.tar.xz" -C "$RUNNER_TEMP/firefox/app"
+          python3 gecko/scripts/webexposed.py compare "$RUNNER_TEMP/app/whisper" "$RUNNER_TEMP/firefox/app/firefox" \
+            --allow gecko/webexposed-allow.txt
       - name: Import test (Firefox, Zen and the rest of the family)
         if: ${{ !cancelled() }}
         run: |

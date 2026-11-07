@@ -22,6 +22,7 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+  WhisperAbout: "moz-src:///browser/components/whisper/WhisperAbout.sys.mjs",
   CustomizableUI:
     "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
@@ -30,8 +31,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WhisperToolbar: "moz-src:///browser/components/whisper/WhisperToolbar.sys.mjs",
 });
 
-const CAST_CHROME_SHEET = "chrome://browser/content/whisper/cast.css";
-const CAST_PAGES_SHEET = "chrome://browser/content/whisper/cast-pages.css";
+const CAST_CHROME_SHEET = "chrome://whisper/content/cast.css";
+const CAST_PAGES_SHEET = "chrome://whisper/content/cast-pages.css";
+const ABOUT_DIALOG_URL = "chrome://browser/content/aboutDialog.xhtml";
 
 const UBO_ID = "uBlock0@raymondhill.net";
 const UBO_WIDGET_ID = "ublock0_raymondhill_net-browser-action";
@@ -65,6 +67,7 @@ export const WhisperUI = {
     }
     this._initialized = true;
     guarded("page colours", () => this._registerPageSheet());
+    guarded("about dialog", () => this._watchAboutDialog());
     guarded("toolbar layout", () => lazy.WhisperToolbar.init());
   },
 
@@ -96,6 +99,30 @@ export const WhisperUI = {
       lazy.WhisperSidebar.uninitWindow(win)
     );
     guarded("layout cleanup", () => lazy.WhisperLayout.uninitWindow(win));
+  },
+
+  /**
+   * The about dialog (Help > About Whisper) gets Whisper's version and look once it
+   * has loaded (WhisperAbout.sys.mjs). Firefox's own aboutDialog.js stays unchanged:
+   * web pages can load it (chrome://browser/ is content accessible), so a changed
+   * copy would tell them this is Whisper.
+   */
+  _watchAboutDialog() {
+    Services.wm.addListener({
+      onOpenWindow(xulWindow) {
+        const win = xulWindow.docShell.domWindow;
+        win.addEventListener(
+          "load",
+          () => {
+            if (win.document.documentURI == ABOUT_DIALOG_URL) {
+              guarded("about dialog", () => lazy.WhisperAbout.init(win));
+            }
+          },
+          { once: true }
+        );
+      },
+      onCloseWindow() {},
+    });
   },
 
   /**

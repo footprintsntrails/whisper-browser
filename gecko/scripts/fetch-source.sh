@@ -6,14 +6,19 @@
 #   2. the tarball's SHA-512 matches SHA512SUMS and the value pinned in firefox.env.
 # Nothing is unpacked unless every check passes.
 #
-# Usage: fetch-source.sh DIR
+# With --firefox-linux it fetches Mozilla's own Linux x86_64 build of the same version
+# instead (firefox-<version>.tar.xz, checked against the signed SHA512SUMS), for the
+# checks that compare Whisper with Firefox (gecko/scripts/webexposed.py).
+#
+# Usage: fetch-source.sh DIR [--firefox-linux]
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=gecko/firefox.env
 . "$here/firefox.env"
 
-dir=${1:?usage: fetch-source.sh DIR}
+dir=${1:?usage: fetch-source.sh DIR [--firefox-linux]}
+what=${2:-source}
 mkdir -p "$dir"
 cd "$dir"
 
@@ -44,6 +49,20 @@ if [ "$validsig" != "$MOZILLA_RELEASE_KEY_FPR" ]; then
   exit 1
 fi
 echo "SHA512SUMS: good signature from $(echo "$status" | awk '$2 == "VALIDSIG" { print $3 }') (primary $validsig)"
+
+if [ "$what" = --firefox-linux ]; then
+  build="firefox-$FIREFOX_VERSION.tar.xz"
+  sum=$(awk -v f="linux-x86_64/en-US/$build" '$2 == f { print $1 }' SHA512SUMS)
+  [ -n "$sum" ] || { echo "SHA512SUMS has no linux-x86_64/en-US/$build" >&2; exit 1; }
+  fetch "$base/linux-x86_64/en-US/$build" "$build.part"
+  echo "$sum  $build.part" | sha512sum -c --quiet -
+  mv "$build.part" "$build"
+  echo "$build: SHA-512 verified against the signed SHA512SUMS"
+  exit 0
+elif [ "$what" != source ]; then
+  echo "unknown option $what" >&2
+  exit 1
+fi
 
 listed=$(awk -v f="source/$tarball" '$2 == f { print $1 }' SHA512SUMS)
 if [ "$listed" != "$FIREFOX_SOURCE_SHA512" ]; then

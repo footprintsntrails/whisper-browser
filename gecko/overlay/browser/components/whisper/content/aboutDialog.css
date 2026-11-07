@@ -4,7 +4,10 @@
 
 /* Whisper's about dialog: the Firefox dialog in Whisper's colours, without the parts
  * that speak for Mozilla (the "designed by Mozilla" and donation lines, Mozilla's terms
- * and privacy links). The licence link and the version stay. */
+ * and privacy links, Firefox's trademark line, replaced by Whisper's own notice). The
+ * licence link and the version stay. Loaded by WhisperAbout.sys.mjs over Firefox's own
+ * chrome://branding/content/aboutDialog.css, which stays Firefox's because web pages
+ * can load it. */
 
 @media not ((prefers-contrast) and (prefers-color-scheme: light)) {
   #aboutDialogContainer {

@@ -1,0 +1,23 @@
+Whisper: the about:crashes page files are packaged as in Firefox
+
+What: toolkit/crashreporter/jar.mn packages chrome://global/content/crashes.html,
+crashes.js and crashes.css whether or not the crash reporter is built.
+Why: Whisper builds without the crash reporter, which left these three files out.
+chrome://global/ is content accessible, so a web page that tries to load them could
+tell Whisper from Firefox, which has them. They are inert without the crash reporter.
+gecko/scripts/webexposed.py compares every file web pages can load with Firefox's.
+---
+--- a/toolkit/crashreporter/jar.mn
++++ b/toolkit/crashreporter/jar.mn
+@@ -3,8 +3,9 @@
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+ toolkit.jar:
+-#ifdef MOZ_CRASHREPORTER
++# Whisper: packaged without the crash reporter too, as in Firefox: web pages can load
++# these (chrome://global/ is content accessible), so their absence would identify
++# Whisper (patches/0032-crashes-page-files.patch).
+   content/global/crashes.html            (content/crashes.html)
+   content/global/crashes.js               (content/crashes.js)
+   content/global/crashes.css              (content/crashes.css)
+-#endif

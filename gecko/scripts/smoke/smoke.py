@@ -420,6 +420,43 @@ return { before, after };
 """
 
 
+# Browser files a web page might try to load to tell Whisper from Firefox, and what it
+# must see: Whisper's own files fail as files that do not exist do (they are in a package
+# pages cannot load, chrome://whisper/), Firefox's branding files load with Firefox's
+# sizes, and the about:crashes files Firefox has load too.
+# (url, how the page loads it, expected result: "error" or the expected fields)
+PROBES = [
+    ("chrome://whisper/content/cast.css", "style", "error"),
+    ("chrome://whisper/content/aboutDialog.css", "style", "error"),
+    ("chrome://whisper/content/fonts/Inter-Regular.woff2", "font", "error"),
+    ("chrome://browser/content/whisper/cast.css", "style", "error"),
+    ("chrome://browser/content/whisper/fonts/Inter-Regular.woff2", "font", "error"),
+    ("moz-src:///browser/components/whisper/WhisperUI.sys.mjs", "script", "error"),
+    ("chrome://branding/content/about-logo.svg", "image", {"state": "loaded", "w": 512, "h": 512}),
+    ("chrome://branding/content/about-logo.png", "image", {"state": "loaded", "w": 192, "h": 192}),
+    # No width or height: 300 px wide, as tall as Firefox's aspect ratio (359:80) makes it.
+    ("chrome://branding/content/about-wordmark.svg", "image", {"state": "loaded", "w": 300, "h": 67}),
+    ("chrome://global/content/crashes.css", "style", {"state": "loaded"}),
+]
+
+
+def probe_mismatches(results):
+    """The probes whose result is not what a page sees in Firefox."""
+    bad = {}
+    for url, _kind, want in PROBES:
+        got = results.get(url, {})
+        if want == "error":
+            ok = got.get("state") == "error"
+        else:
+            ok = got.get("state") == want["state"]
+            for k in ("w", "h"):
+                if k in want:
+                    ok = ok and got.get(k) == want[k]
+        if not ok:
+            bad[url] = got
+    return bad
+
+
 class LocalSite:
     """Test pages served on 127.0.0.1 (the test's network namespace has loopback only),
     so page-level checks run without any network."""
@@ -427,11 +464,39 @@ class LocalSite:
     PAGES = {
         "page.html": "<!doctype html><title>Whisper test page</title><h1>Whisper test page</h1>"
                      "<p id=loaded>loaded</p>",
+        # A web page probing for browser files (see PROBES): what it can load and measure.
+        "probe.html": "<!doctype html><title>probe</title><pre id=result>pending</pre><script>"
+                      "const probes = PROBES_JSON;"
+                      "const out = {};"
+                      "const one = ([url, kind]) => new Promise(done => {"
+                      "  const finish = r => { out[url] = r; done(); };"
+                      "  setTimeout(() => finish({ state: 'timeout' }), 5000);"
+                      "  if (kind == 'image') {"
+                      "    const i = new Image();"
+                      "    i.onload = () => finish({ state: 'loaded', w: i.naturalWidth, h: i.naturalHeight });"
+                      "    i.onerror = () => finish({ state: 'error' }); i.src = url;"
+                      "  } else if (kind == 'style') {"
+                      "    const l = document.createElement('link'); l.rel = 'stylesheet';"
+                      "    l.onload = () => finish({ state: 'loaded' }); l.onerror = () => finish({ state: 'error' });"
+                      "    l.href = url; document.head.append(l);"
+                      "  } else if (kind == 'script') {"
+                      "    const sc = document.createElement('script');"
+                      "    sc.onload = () => finish({ state: 'loaded' }); sc.onerror = () => finish({ state: 'error' });"
+                      "    sc.src = url; document.head.append(sc);"
+                      "  } else if (kind == 'font') {"
+                      "    new FontFace('probe', `url(${url})`).load().then(() => finish({ state: 'loaded' }),"
+                      "      () => finish({ state: 'error' }));"
+                      "  }"
+                      "});"
+                      "Promise.all(probes.map(one)).then(() => {"
+                      "  document.getElementById('result').textContent = JSON.stringify(out); });"
+                      "</script>",
     }
 
     def __init__(self):
         self.root = tempfile.mkdtemp(prefix="whisper-site-")
         for name, body in self.PAGES.items():
+            body = body.replace("PROBES_JSON", json.dumps([[u, k] for u, k, _ in PROBES]))
             with open(os.path.join(self.root, name), "w", encoding="utf-8") as f:
                 f.write(body)
         handler = functools.partial(_QuietHandler, directory=self.root)
@@ -670,6 +735,24 @@ def main():
                      tb["layoutVersion"])
 
         site = LocalSite()
+        page = site.url("probe.html")
+        m.run(LOAD_JS, page)
+        try:
+            m.command("Marionette:SetContext", {"value": "content"})
+            probed = None
+            for _ in range(30):
+                text = m.run('return document.getElementById("result")?.textContent;')
+                if text and text != "pending":
+                    probed = json.loads(text)
+                    break
+                time.sleep(0.5)
+        finally:
+            m.command("Marionette:SetContext", {"value": "chrome"})
+        report.facts["web_probes"] = probed
+        bad = probe_mismatches(probed or {})
+        report.check("a web page cannot load Whisper's own files and sees Firefox's branding sizes",
+                     probed is not None and not bad, bad or probed)
+
         page = site.url("page.html")
         report.check("a local test page loads", m.run(LOAD_JS, page) == page, page)
 

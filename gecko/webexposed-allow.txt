@@ -1,0 +1,36 @@
+# Files web pages can load from Firefox's content-accessible chrome:// and resource://
+# packages whose bytes may differ in Whisper (gecko/scripts/webexposed.py compare).
+# Every other exposed file must be byte for byte Firefox's, and the set of exposed URLs
+# must be exactly Firefox's. What a page can measure must still be equal: an image's
+# size (PNG size, an SVG's width/height or aspect ratio, an icon's largest image).
+
+# Whisper's own branding images. A page can load them as images but cannot read their
+# pixels (cross-origin images taint a canvas); their sizes are Firefox's.
+chrome://branding/content/about-logo-private.png
+chrome://branding/content/about-logo-private@2x.png
+chrome://branding/content/about-logo.png
+chrome://branding/content/about-logo.svg
+chrome://branding/content/about-logo@2x.png
+chrome://branding/content/about-wordmark.svg
+chrome://branding/content/about.png
+chrome://branding/content/document.ico
+chrome://branding/content/document_pdf.svg
+chrome://branding/content/firefox-wordmark.svg
+chrome://branding/content/icon16.png
+chrome://branding/content/icon32.png
+chrome://branding/content/icon48.png
+chrome://branding/content/icon64.png
+chrome://branding/content/icon128.png
+
+# Documents that differ only in build details (Whisper builds without tests and the
+# crash reporter). Pages cannot open chrome:// documents or read them; the smoke test
+# checks that a frame pointing at one stays empty in both browsers.
+chrome://browser/content/license.html
+chrome://global/content/license.html
+chrome://global/content/aboutSupport.xhtml
+chrome://global/content/buildconfig.html
+
+# A module (patches/0026, the import window). A page cannot load it as a module (no
+# CORS from chrome://), and as a classic script both copies fail on their first
+# import statement, which is the same.
+chrome://browser/content/migration/migration-wizard.mjs

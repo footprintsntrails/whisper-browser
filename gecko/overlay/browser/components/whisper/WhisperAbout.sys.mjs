@@ -6,12 +6,15 @@
  * The about dialog (Help > About Whisper).
  *
  * Firefox's dialog shows the application version, which in Whisper stays Firefox's
- * (159.0.1) so that web pages and add-ons see Firefox. aboutDialog.js calls init()
- * right after it has written that line (patches/0024-about-dialog-whisper-version.patch),
- * and Whisper replaces it with its own version and the Firefox version it is based on:
+ * (159.0.1) so that web pages and add-ons see Firefox. WhisperUI calls init() when the
+ * dialog has loaded, and Whisper replaces that line with its own version and the
+ * Firefox version it is based on:
  *
  *   Whisper 0.1.0 (64-bit)
  *   Based on Firefox 159.0.1
+ *
+ * Its look comes from chrome://whisper/content/aboutDialog.css; the branding folder's
+ * aboutDialog.css is Firefox's own (web pages can load that one).
  *
  * Whisper's version is the locked pref whisper.version, which gecko/scripts/prepare.sh
  * writes from gecko/release.env. Firefox's links to Mozilla's help and feedback pages,
@@ -21,6 +24,7 @@
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const VERSION_PREF = "whisper.version";
+const STYLE = "chrome://whisper/content/aboutDialog.css";
 
 export const WhisperAbout = {
   init(win) {
@@ -32,6 +36,10 @@ export const WhisperAbout = {
       return;
     }
     doc.l10n.addResourceIds(["whisper/whisper-about.ftl"]);
+    win.windowUtils.loadSheetUsingURIString(
+      STYLE,
+      Ci.nsIDOMWindowUtils.AUTHOR_SHEET
+    );
 
     const field = doc.getElementById("version");
     const arch = Services.sysinfo.get("arch");

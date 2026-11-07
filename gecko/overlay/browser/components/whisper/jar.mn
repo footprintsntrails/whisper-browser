@@ -3,13 +3,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# Whisper's own files, as chrome://whisper/content/. The package is NOT content
+# accessible (no contentaccessible=yes), unlike Firefox's chrome://browser/: a web page
+# that tries to load any of these gets the same error as for a file that does not
+# exist, so pages cannot tell Whisper from Firefox by probing for them
+# (gecko/scripts/webexposed.py and the smoke test check this).
 browser.jar:
-    content/browser/whisper/cast.css                 (content/cast.css)
-    content/browser/whisper/cast-pages.css           (content/cast-pages.css)
-    content/browser/whisper/fonts/Inter-Regular.woff2   (content/fonts/Inter-Regular.woff2)
-    content/browser/whisper/fonts/Inter-Medium.woff2    (content/fonts/Inter-Medium.woff2)
-    content/browser/whisper/fonts/Inter-SemiBold.woff2  (content/fonts/Inter-SemiBold.woff2)
-    content/browser/whisper/fonts/OFL.txt               (content/fonts/OFL.txt)
+% content whisper %content/whisper/
+    content/whisper/cast.css                    (content/cast.css)
+    content/whisper/cast-pages.css              (content/cast-pages.css)
+    content/whisper/aboutDialog.css             (content/aboutDialog.css)
+    content/whisper/fonts/Inter-Regular.woff2   (content/fonts/Inter-Regular.woff2)
+    content/whisper/fonts/Inter-Medium.woff2    (content/fonts/Inter-Medium.woff2)
+    content/whisper/fonts/Inter-SemiBold.woff2  (content/fonts/Inter-SemiBold.woff2)
+    content/whisper/fonts/OFL.txt               (content/fonts/OFL.txt)
 
 # Whisper's strings. Only English for now; the file is not part of Mozilla's
 # localization, so it is shipped as-is for every locale.

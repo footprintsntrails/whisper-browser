@@ -98,6 +98,11 @@ echo "Copying the overlay (new files only)"
   cp "$gecko/overlay/$f" "$src/$f"
 done
 
+# Firefox's own about dialog stylesheet in Whisper's branding folder: chrome://branding/
+# is content accessible, so web pages could tell a changed copy apart. Whisper's look
+# for the dialog is chrome://whisper/content/aboutDialog.css (WhisperAbout.sys.mjs).
+cp "$src/browser/branding/official/content/aboutDialog.css" "$src/browser/branding/whisper/content/aboutDialog.css"
+
 # overlay/browser/app/whisper.exe.manifest is Firefox's firefox.exe.manifest under the
 # name the build looks for when the program is called whisper (without it Windows runs
 # whisper.exe as a program for an old Windows version; LibreWolf found this breaks the
