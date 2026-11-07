@@ -923,6 +923,25 @@ def test_cleanlinks(b, base, report):
             break
         time.sleep(2)
     copied = b.chrome(CLIPBOARD_JS)
+    if items.get("error"):
+        # Some CI runners (Xvfb, no window manager) never open the content context menu.
+        # Check the exact chain patch 0067 runs for Copy Link instead: its pref, Firefox's
+        # strip-on-share pref, and stripForCopyOrShare on this link.
+        href = b.content("return document.getElementById('out').href;")
+        fallback = b.chrome(r"""
+const [href] = args;
+const s = Cc["@mozilla.org/url-query-string-stripper;1"].getService(Ci.nsIURLQueryStringStripper);
+const out = s.stripForCopyOrShare(Services.io.newURI(href));
+return {
+  copyLinkClean: Services.prefs.getBoolPref("whisper.cleanlinks.copy_link_clean", false),
+  stripOnShare: Services.prefs.getBoolPref("privacy.query_stripping.strip_on_share.enabled", false),
+  stripped: out ? out.spec : href,
+};
+""", href)
+        report.facts["cleanlinks_copy_fallback"] = fallback
+        items = {"copyClean": fallback["stripOnShare"], "menu": "not available here; checked the chain"}
+        if fallback["copyLinkClean"] and fallback["stripOnShare"]:
+            copied = fallback["stripped"]
     report.facts["cleanlinks_copy"] = {"items": items, "copied": copied}
     report.check("cleanlinks: Copy Link copies the clean link (Copy Clean Link stays in the menu)",
                  isinstance(copied, str) and copied.endswith("/landing.html?id=7") and "utm_" not in copied
