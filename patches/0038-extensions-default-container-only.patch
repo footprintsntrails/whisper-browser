@@ -1,0 +1,65 @@
+Whisper: chosen add-ons stay out of container tabs
+
+What: content scripts (and the CSS and scripts an extension injects) of the add-ons
+named in the pref whisper.extensions.defaultContainerOnly (a comma-separated list of
+IDs; Whisper names Dark Reader) do not match pages in container tabs (userContextId
+other than 0). MozDocumentMatcher::Matches checks it next to Firefox's private-browsing
+check.
+Why: Whisper turns Dark Reader on for normal tabs and off for container tabs, which
+later carry Whisper's "masks" (a container per identity that should look like a plain
+Firefox). Firefox has a per-extension switch for private windows but none for
+containers. The pref is empty unless Whisper sets it, so other add-ons are unaffected.
+---
+--- a/toolkit/components/extensions/WebExtensionPolicy.cpp
++++ b/toolkit/components/extensions/WebExtensionPolicy.cpp
+@@ -11,6 +11,7 @@
+ #include "mozilla/glean/ExtensionsMetrics.h"
+ #include "mozilla/AddonManagerWebAPI.h"
+ #include "mozilla/BasePrincipal.h"
++#include "mozilla/Preferences.h"
+ #include "mozilla/dom/WindowGlobalChild.h"
+ #include "mozilla/ResultExtensions.h"
+ #include "mozilla/StaticPrefs_extensions.h"
+@@ -913,6 +914,26 @@
+   MOZ_ASSERT_IF(mIsUserScript, mWorld != ContentScriptExecutionWorld::ISOLATED);
+ }
+ 
++// Whisper: the add-ons named in whisper.extensions.defaultContainerOnly (a comma-
++// separated list of IDs; Dark Reader) leave pages in container tabs alone, so a
++// container tab looks as it would without them
++// (patches/0038-extensions-default-container-only.patch).
++static bool WhisperDefaultContainerOnly(nsAtom* aId) {
++  nsAutoCString ids;
++  if (NS_FAILED(Preferences::GetCString("whisper.extensions.defaultContainerOnly",
++                                        ids)) ||
++      ids.IsEmpty()) {
++    return false;
++  }
++  nsAtomCString id(aId);
++  for (const nsACString& item : ids.Split(',')) {
++    if (item.Equals(id)) {
++      return true;
++    }
++  }
++  return false;
++}
++
+ bool MozDocumentMatcher::Matches(const DocInfo& aDoc,
+                                  bool aIgnorePermissions) const {
+   if (!mFrameID.IsNull()) {
+@@ -931,6 +952,15 @@
+     return false;
+   }
+ 
++  // Whisper: see WhisperDefaultContainerOnly.
++  if (loadContext && mExtension && WhisperDefaultContainerOnly(mExtension->Id())) {
++    OriginAttributes attrs;
++    loadContext->GetOriginAttributes(attrs);
++    if (attrs.mUserContextId != 0) {  // 0: no container
++      return false;
++    }
++  }
++
+   if (loadContext && !mOriginAttributesPatterns.IsNull()) {
+     OriginAttributes docShellAttrs;
+     loadContext->GetOriginAttributes(docShellAttrs);
