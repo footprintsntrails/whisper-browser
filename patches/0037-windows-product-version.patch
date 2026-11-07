@@ -1,0 +1,26 @@
+Whisper: the product version in Windows file details is Whisper's
+
+What: config/create_rc.py writes the display version (MOZ_APP_VERSION_DISPLAY) as the
+product version string of every Windows program and library, instead of Firefox's
+version (browser/app/module.ver and ipc/app/module.ver ask for MOZ_APP_VERSION).
+prepare.sh makes the display version Whisper's own (WHISPER_VERSION in
+gecko/release.env, through configure's --with-version-file-path), while the
+application version stays Firefox's.
+Why: Explorer's Properties > Details showed "Product name: Whisper" with "Product
+version: 159.0.1", Firefox's number; it should say Whisper's version. The file
+version and the numeric version resource stay Firefox's.
+---
+--- a/config/create_rc.py
++++ b/config/create_rc.py
+@@ -304,7 +304,10 @@
+         company=buildconfig.substs.get("MOZ_APP_VENDOR", ""),
+         description=overrides.get("WIN32_MODULE_DESCRIPTION", ""),
+         mfversion=overrides.get("WIN32_MODULE_FILEVERSION_STRING", milestone_string),
+-        mpversion=overrides.get("WIN32_MODULE_PRODUCTVERSION_STRING", milestone_string),
++        # Whisper: the product version of every program and library is Whisper's own
++        # (the display version, which prepare.sh sets from release.env), also where a
++        # module.ver asks for MOZ_APP_VERSION; the file version stays Firefox's.
++        mpversion=app_version_display or milestone_string,
+         module=overrides.get("WIN32_MODULE_NAME", ""),
+         trademarks="",
+         binary=overrides.get("WIN32_MODULE_ORIGINAL_FILENAME", binary),

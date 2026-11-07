@@ -466,6 +466,12 @@ def cmd_check(a):
                             f.write(write_ico(images))
                         save_png(images, stem + ".png")
                 details = version_strings(pe.resources())
+                if a.product_version and label.endswith("whisper.exe"):
+                    shown = details.get("ProductVersion", "")
+                    ok = shown == a.product_version
+                    print(f"{'ok ' if ok else 'BAD'} {label} product version: {shown or 'none'}")
+                    if not ok:
+                        problems.append(f"{label}: product version {shown!r}, expected {a.product_version!r}")
                 bad = {k: v for k, v in details.items() if any(w in v for w in ("Mozilla", "Firefox"))}
                 if bad and label.endswith((".exe", ":setup.exe")) and a.details:
                     problems.append(f"{label}: file details name Mozilla or Firefox: {bad}")
@@ -524,6 +530,8 @@ def main():
     p.add_argument("--extract")
     p.add_argument("--details", action="store_true",
                    help="also fail if a program's file details name Mozilla or Firefox")
+    p.add_argument("--product-version",
+                   help="also fail if whisper.exe's product version is not this (Whisper's version)")
     p.add_argument("files", nargs="+")
     p.set_defaults(func=cmd_check)
     p = sub.add_parser("rebrand-sfx")

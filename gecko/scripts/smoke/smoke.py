@@ -134,6 +134,10 @@ for (const k of ["MOZILLA_OFFICIAL", "MOZ_TELEMETRY_REPORTING", "MOZ_DATA_REPORT
     canApply: aus.canApplyUpdates,
     whisperVersion: Services.prefs.getDefaultBranch("").getStringPref("whisper.version", ""),
     whisperVersionLocked: Services.prefs.prefIsLocked("whisper.version"),
+    // Firefox's version where pages, add-ons and updates read it; Whisper's for display.
+    appVersion: Services.appinfo.version,
+    displayVersion: AppConstants.MOZ_APP_VERSION_DISPLAY,
+    userAgent: navigator.userAgent,
   };
 }
 r.telemetry = {
@@ -936,6 +940,15 @@ def main():
                      not u["disabled"] and u["canCheck"] and u["canApply"], u)
         report.check(f"Whisper's version is {release['WHISPER_VERSION']} (locked)",
                      u["whisperVersion"] == release["WHISPER_VERSION"] and u["whisperVersionLocked"], u)
+        firefox_version = read_env("firefox.env")["FIREFOX_VERSION"]
+        report.check(f"Whisper {release['WHISPER_VERSION']} is the display version and in `whisper --version`",
+                     u["displayVersion"] == release["WHISPER_VERSION"]
+                     and report.facts["version_output"] == f"Whisper {release['WHISPER_VERSION']}",
+                     {"display": u["displayVersion"], "--version": report.facts["version_output"]})
+        report.check(f"pages, add-ons and updates still see Firefox {firefox_version}",
+                     u["appVersion"] == firefox_version
+                     and f"Firefox/{firefox_version.split('.')[0]}.0" in u["userAgent"]
+                     and "Whisper" not in u["userAgent"], {"app": u["appVersion"], "ua": u["userAgent"]})
         report.check("Telemetry does not record", not r["telemetry"]["canRecordBase"]
                      and not r["telemetry"]["canRecordExtended"], r["telemetry"])
 

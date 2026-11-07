@@ -8,7 +8,7 @@
 #   5. adds what lives elsewhere in this repository (Inter fonts, icons, installer art,
 #      the installer's self-extractor with Whisper's icon) and the verified uBlock Origin XPI,
 #   6. checks the MAR signing certificates against the fingerprints in release.env and
-#      writes Whisper's own version into the branding prefs,
+#      writes Whisper's own version into the branding prefs and as the display version,
 #   7. writes SRC/mozconfig for TARGET (with the MAR channel from release.env).
 # For the canary VARIANT it also makes Whisper Canary's branding directory
 # (browser/branding/whisper-canary: the release one with gecko/variants/canary/ over it)
@@ -192,6 +192,14 @@ fi
   echo "// Whisper's own version (added by gecko/scripts/prepare.sh from gecko/release.env)."
   echo "pref(\"whisper.version\", \"$WHISPER_VERSION\", locked);"
 } >> "$branding/pref/firefox-branding.js"
+# ... as the display version (the product version in Windows file details,
+# patches/0037; `whisper --version`; about:support), while the application version, which
+# web pages, add-ons and updates see, stays Firefox's: configure reads both from the
+# version folder the mozconfig names (--with-version-file-path, below).
+versions="$src/browser/components/whisper/version"
+mkdir -p "$versions"
+cp "$src/browser/config/version.txt" "$versions/version.txt"
+echo "$WHISPER_VERSION" > "$versions/version_display.txt"
 # ... and for Apps & Features on Windows (patches/0025).
 {
   echo
@@ -234,6 +242,9 @@ replace_once() {
   echo "# --- Channels (gecko/release.env, added by prepare.sh) ---------------------------"
   echo "ac_add_options MAR_CHANNEL_ID=$mar_channel"
   echo "ac_add_options ACCEPTED_MAR_CHANNEL_IDS=$mar_channel"
+  echo
+  echo "# --- Whisper's version as the display version (release.env, added by prepare.sh) -"
+  echo "ac_add_options --with-version-file-path=browser/components/whisper/version"
 } > "$src/mozconfig"
 if [ "$variant" = canary ]; then
   replace_once "ac_add_options --with-branding=browser/branding/whisper" \

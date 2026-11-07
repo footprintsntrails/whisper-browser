@@ -239,7 +239,8 @@ jobs:
       # Every icon in the Windows package and installer is Whisper's (Whisper Canary's for
       # the canary): the installer's self-extractor, the setup.exe it carries, whisper.exe,
       # uninstall\helper.exe, updater.exe and the rest (patches/0030). A Firefox icon fails
-      # the build, and so do Mozilla or Firefox in the installer's file details.
+      # the build, and so do Mozilla or Firefox in the installer's file details and a product
+      # version of whisper.exe other than Whisper's (patches/0037).
       - name: Whisper's icons only (Windows)
         id: icons
         if: ${{ !cancelled() && steps.package.outcome == 'success' && inputs.target == 'windows-x86_64' }}
@@ -250,7 +251,10 @@ jobs:
           export SEVENZIP
           mkdir -p "$W/icons"
           status=0
+          # shellcheck source=gecko/release.env
+          . gecko/release.env
           python3 gecko/scripts/winres.py check --details --ico "$ico" --extract "$W/icons" \
+            --product-version "$WHISPER_VERSION" \
             "$W"/out/whisper-*.win64.zip "$W"/out/whisper-*.installer.exe > "$W/icons/check.txt" 2>&1 || status=$?
           cat "$W/icons/check.txt"
           {
