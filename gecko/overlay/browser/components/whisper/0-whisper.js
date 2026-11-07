@@ -34,18 +34,16 @@ pref("toolkit.telemetry.updatePing.enabled", false, locked);
 pref("toolkit.telemetry.bhrPing.enabled", false, locked);
 pref("toolkit.telemetry.reportingpolicy.firstRun", false, locked);
 pref("toolkit.telemetry.server", "data:,", locked);
-pref("toolkit.coverage.opt-out", true, locked);
-pref("toolkit.coverage.endpoint.base", "", locked);
 pref("app.shield.optoutstudies.enabled", false, locked);
 pref("app.normandy.enabled", false, locked);
 pref("app.normandy.api_url", "", locked);
-pref("messaging-system.rsexperimentloader.enabled", false, locked);
+// Nimbus experiments: studies (above, and they need telemetry, which is off) and
+// rollouts are its two switches in Firefox 159.
 pref("nimbus.rollouts.enabled", false, locked);
 pref("breakpad.reportURL", "", locked);
 pref("browser.tabs.crashReporting.sendReport", false, locked);
 pref("browser.crashReports.unsubmittedCheck.enabled", false, locked);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false, locked);
-pref("dom.private-attribution.submission.enabled", false, locked);
 pref("browser.newtabpage.activity-stream.feeds.telemetry", false, locked);
 pref("browser.newtabpage.activity-stream.telemetry", false, locked);
 
@@ -63,8 +61,8 @@ pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", false
 pref("browser.discovery.enabled", false, locked);
 pref("browser.preferences.moreFromMozilla", false, locked);
 pref("browser.vpn_promo.enabled", false, locked);
-pref("browser.promo.focus.enabled", false, locked);
 pref("browser.promo.pin.enabled", false, locked);
+pref("browser.promo.relay.enabled", false, locked);
 pref("identity.fxaccounts.toolbar.pxiToolbarEnabled", false);
 pref("extensions.getAddons.showPane", false);
 pref("extensions.htmlaboutaddons.recommendations.enabled", false);
