@@ -865,6 +865,12 @@ function parseOriginAttributes(suffix) {
 }
 
 async function getFormDataResource(profilePath) {
+  // Whisper keeps no form history by default (browser.formfill.enable is false in
+  // 0-whisper-security.js), and FormHistory then refuses every addition: offer form
+  // history only when the person has turned it on.
+  if (!Services.prefs.getBoolPref("browser.formfill.enable", true)) {
+    return null;
+  }
   let formHistoryPath = await profileFile(profilePath, "formhistory.sqlite");
   if (!formHistoryPath) {
     return null;

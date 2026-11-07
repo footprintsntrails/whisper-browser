@@ -151,6 +151,10 @@ class Report:
 def run_browser(app, profile, home, out, offer, steps):
     with open(os.path.join(profile, "user.js"), "w") as f:
         f.write(PREFS.format(offer="true" if offer else "false"))
+        if not offer:
+            # The "Firefox" source profile: Firefox keeps form history, Whisper does not
+            # (browser.formfill.enable is false in 0-whisper-security.js).
+            f.write('user_pref("browser.formfill.enable", true);\n')
     env = dict(os.environ, HOME=home, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS="1")
     env.pop("XDG_CONFIG_HOME", None)
     log = open(os.path.join(out, "browser.log"), "a")
@@ -214,7 +218,21 @@ def main():
             report.check("history arrived", r.get("visited"))
             report.check("password arrived, decrypted with the source profile's key",
                          r.get("login") == [{"username": "alice", "passwordMatches": True}], r.get("login"))
-            report.check("form history arrived", r.get("formHistory") == 1, r.get("formHistory"))
+            # Whisper keeps no form history by default, so the import skips it ...
+            report.check("form history is skipped while Whisper keeps none",
+                         r.get("formHistory") == 0, r.get("formHistory"))
+            # ... and brings it over once the person turns form history on.
+            # (Firefox caches what a migrator offers for the session; drop it so the
+            # changed pref is seen, as it is in a new session.)
+            m.run('Services.prefs.setBoolPref("browser.formfill.enable", true);'
+                  'const { MigrationUtils } = ChromeUtils.importESModule('
+                  '"moz-src:///browser/components/migration/MigrationUtils.sys.mjs");'
+                  '(await MigrationUtils.getMigrator("firefox"))._resourcesByProfile = null;')
+            fh = m.run(IMPORT_JS, URL, VISITED, PASSWORD, ["FORMDATA"])
+            m.run('Services.prefs.clearUserPref("browser.formfill.enable");')
+            report.facts["formdata"] = fh
+            report.check("form history arrived when form history is on",
+                         fh.get("migrated") and fh.get("formHistory") == 1, fh)
             report.check("cookies did not come along unasked", r.get("cookies") == [], r.get("cookies"))
             c = m.run(IMPORT_JS, URL, VISITED, PASSWORD, ["COOKIES"])
             report.facts["cookies"] = c
