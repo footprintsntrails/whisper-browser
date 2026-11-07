@@ -213,7 +213,11 @@ export const WhisperSettings = {
     if (!nav || !manager || !Services.prefs.getBoolPref("browser.settings-redesign.enabled", false)) {
       return;
     }
-    doc.l10n.addResourceIds(["whisper/whisper-settings.ftl"]);
+    doc.l10n.addResourceIds([
+      "whisper/whisper-settings.ftl",
+      "whisper/whisper-clipguard.ftl",
+      "whisper/whisper-security-settings.ftl",
+    ]);
     win.windowUtils.loadSheetUsingURIString(
       STYLE,
       Ci.nsIDOMWindowUtils.AUTHOR_SHEET

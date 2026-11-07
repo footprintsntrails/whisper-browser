@@ -20,6 +20,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   WhisperAddressMemory:
     "moz-src:///browser/components/whisper/security/WhisperAddressMemory.sys.mjs",
 });
+// CryptoAddress.sys.mjs exports functions, not an object of that name: the module itself.
+ChromeUtils.defineLazyGetter(lazy, "CryptoAddress", () =>
+  ChromeUtils.importESModule("moz-src:///browser/components/whisper/security/CryptoAddress.sys.mjs")
+);
 
 const MODULES = "moz-src:///browser/components/whisper/security/";
 
@@ -43,7 +47,28 @@ export const WhisperSecurity = {
     }
     this._initialized = true;
     guarded("input guard", () => this._registerInputGuard());
+    guarded("script copies", () => Services.obs.addObserver(this, "whisper-script-copy"));
     guarded("download check", () => lazy.WhisperDownloadGuard.init());
+  },
+
+  /**
+   * A page's navigator.clipboard write (the clipboard guard's parent code tells us,
+   * toolkit/components/clipguard/ClipboardGuard.cpp): like a copy, an address is
+   * remembered for the swapped-address check and anything else replaces it.
+   */
+  observe(_subject, topic, data) {
+    if (
+      topic != "whisper-script-copy" ||
+      !Services.prefs.getBoolPref("whisper.security.addressguard.enabled", true)
+    ) {
+      return;
+    }
+    const found = lazy.CryptoAddress.classifyAddress(data ?? "");
+    if (found) {
+      lazy.WhisperAddressMemory.remember(found);
+    } else {
+      lazy.WhisperAddressMemory.forget();
+    }
   },
 
   onWindowDelayedStartup(_win) {},

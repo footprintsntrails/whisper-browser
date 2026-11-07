@@ -24,6 +24,14 @@
 <h2>Send</h2>
 <p>Deposit address: <span id="addr">bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4</span></p>
 <label>Recipient <input id="to" autocomplete="off"></label>
+<!-- A page's own copy button: navigator.clipboard.writeText, which fires no copy event -->
+<button id="copybtn" type="button"
+        data-address="bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3">Copy the other address</button>
+<script>
+  document.getElementById("copybtn").addEventListener("click", e => {
+    navigator.clipboard.writeText(e.target.dataset.address);
+  });
+</script>
 <script>
   window.pageLog = [];
   const note = (type, e) => {

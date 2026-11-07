@@ -766,6 +766,20 @@ def test_address(b, base, report, out):
                  not d.get("open") and state["values"]["to"] == COPIED
                  and any(e["type"] == "paste" for e in state["log"]), state["values"])
 
+    # A page's copy button (navigator.clipboard.writeText) is a copy in Whisper too: the
+    # clipboard guard's parent code tells the address guard (ClipboardGuard.cpp,
+    # "whisper-script-copy"). The button copies the other address, so pasting the first
+    # one now is the mismatch.
+    click(b, "copybtn")
+    time.sleep(0.5)
+    paste_into(b, "to", COPIED)
+    d = b.chrome(DIALOG_JS, 3000)
+    report.facts["address_script_copy"] = d
+    report.check("address: an address a page's copy button wrote (navigator.clipboard) is compared too",
+                 d.get("open") and SWAPPED in (d.get("body") or ""), d)
+    if d.get("open"):
+        b.chrome(CLICK_JS, "button.primary")
+
 
 def test_downloads(b, base, report):
     engine = b.chrome(ENGINE_JS)

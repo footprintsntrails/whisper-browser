@@ -13,11 +13,10 @@
  * add-engine dialog, the default browser state), the group reuses Firefox's setting
  * with Whisper's words; Firefox's search module is imported for that.
  *
- * Slots for groups other branches register (each module calls registerGroups for its
- * own ids; WhisperSettings lists them, and a group that is not registered is skipped):
- *   whisperClipguard   clipboard protection (clipguard-settings.mjs)
+ * Groups other parts of Whisper register, imported below (WhisperSettings lists them):
+ *   whisperClipguard   clipboard protection (settings/clipguard-settings.mjs)
  *   whisperRecoveryPhrase, whisperSwappedAddress, whisperDownloads, whisperPrograms,
- *   whisperCleanLinks  the security features (whisper-security-settings.mjs)
+ *   whisperCleanLinks  the security features (security/settings/whisper-security-settings.mjs)
  */
 
 /* global gotoPref */
@@ -27,6 +26,11 @@ import { SettingGroupManager } from "chrome://browser/content/preferences/config
 // Firefox's search settings: defaultEngineNormal, suggestionsInSearchFieldsCheckbox,
 // addEngineButton.
 import "chrome://browser/content/preferences/config/search.mjs";
+// Clipboard protection (ClickFix) and the security features register their own groups
+// (whisperClipguard; whisperRecoveryPhrase, whisperSwappedAddress, whisperDownloads,
+// whisperPrograms, whisperCleanLinks), which WhisperSettings lists in the pane.
+import { registerClipguardSettings } from "chrome://whisper/content/settings/clipguard-settings.mjs";
+import "chrome://whisper/content/security/settings/whisper-security-settings.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -47,6 +51,19 @@ function prefSetting(id, pref, type = "bool") {
   }
   Preferences.addSetting({ id, pref });
 }
+
+// --- Clipboard protection -------------------------------------------------------------
+
+for (const [id, type] of [
+  ["clipguard.mode", "int"],
+  ["clipguard.user_copy_notice", "bool"],
+  ["clipguard.strict_script_copy", "bool"],
+]) {
+  if (!Preferences.get(id)) {
+    Preferences.add({ id, type });
+  }
+}
+registerClipguardSettings(Preferences, SettingGroupManager);
 
 // --- Whisper itself -----------------------------------------------------------------
 

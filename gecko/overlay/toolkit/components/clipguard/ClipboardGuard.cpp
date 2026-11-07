@@ -331,6 +331,22 @@ static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aV
 
 /* static */ bool ClipboardGuard::IsEnabled() { return !GuardOff(); }
 
+// Whisper's swapped-address guard (browser/components/whisper/security) remembers the
+// last cryptocurrency address copied in Whisper. A page's navigator.clipboard write fires
+// no "copy" event for it to see, so the parent tells it: observers of
+// "whisper-script-copy" get the text. Short texts only (an address is far shorter);
+// parent process only, nothing is kept or logged here.
+static void NotifyScriptCopy(const nsAString& aText) {
+  if (aText.IsEmpty() || aText.Length() > 256) {
+    return;
+  }
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  if (obs) {
+    obs->NotifyObservers(nullptr, "whisper-script-copy",
+                         PromiseFlatString(aText).get());
+  }
+}
+
 /* static */ void ClipboardGuard::CommitAllowedWrite(
     nsBaseClipboard* aClipboard, nsITransferable* aTransferable,
     nsIClipboardOwner* aOwner, nsIClipboard::ClipboardType aWhichClipboard,
@@ -375,8 +391,8 @@ static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aV
   // Only content writes to the global clipboard are checked. A null or chrome window is
   // the browser itself (the URL bar, an about: page, the placeholder write below) and is
   // left alone -- the same gate content analysis uses in NeedsCopyContentAnalysis.
-  if (GuardOff() || aWhichClipboard != nsIClipboard::kGlobalClipboard ||
-      !aTransferable || !aWindowContext || aWindowContext->IsInProcess() ||
+  if (aWhichClipboard != nsIClipboard::kGlobalClipboard || !aTransferable ||
+      !aWindowContext || aWindowContext->IsInProcess() ||
       !aWindowContext->GetBrowsingContext() ||
       aWindowContext->GetBrowsingContext()->IsChrome()) {
     return Result::NotGuarded;
@@ -392,6 +408,12 @@ static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aV
   // IPCTransferable, never on the native clipboard.
   ClipguardSource source =
       static_cast<ClipguardSource>(aTransferable->GetWhisperCopySource());
+  if (source == ClipguardSource::AsyncClipboard) {
+    NotifyScriptCopy(text);
+  }
+  if (GuardOff()) {
+    return Result::NotGuarded;
+  }
 
   clipguard::ClipguardVerdict verdict{};
   clipguard::clipguard_classify(&text, isHtml, &verdict);
