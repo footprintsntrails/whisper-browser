@@ -38,6 +38,7 @@ const RULES: &[(&str, &str)] = &[
 /// Addresses that are identifiers, not people.
 const ALLOWED_ADDRESSES: &[&str] = &[
     "uBlock0@raymondhill.net",
+    "addon@darkreader.org",
     "firefox-compact-dark@mozilla.org",
     "noreply@anthropic.com",
 ];
