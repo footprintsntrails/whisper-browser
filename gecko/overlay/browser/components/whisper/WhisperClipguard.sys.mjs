@@ -29,6 +29,8 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 // nsIClipguardEvent constants, mirrored so the switch reads clearly.
@@ -43,6 +45,10 @@ const NOTICE_WARNED = 5;
 
 // clipguard::Source
 const SOURCE_USER_COPY = 1;
+
+// How long the page has to answer a visibility check before it counts as unchecked (the
+// write itself is held meanwhile; a page answers in a few milliseconds).
+const VISIBILITY_TIMEOUT_MS = 2000;
 
 // "Copy anyway" makes the person hold the button this long, as Opera's Paste Protect
 // does, so a reflexive click cannot undo the block.
@@ -83,6 +89,13 @@ export const WhisperClipguard = {
         },
         allFrames: true,
         messageManagerGroups: ["browsers"],
+        // Firefox 159 only creates actors in web content processes when they say so
+        // (dom.jsipc.check_safeForUntrustedWebProcess); without this every visibility
+        // check failed and every on-screen command was blocked. It is safe: the page's
+        // process can only answer "this text is on screen", which a compromised process
+        // could fake anyway by writing the clipboard itself, and the parent compares the
+        // answer with the held text (clipguard_is_visible) rather than trusting it.
+        safeForUntrustedWebProcess: true,
       });
     } catch (e) {
       // Another registration (a reload of this module) already did it.
@@ -127,24 +140,42 @@ export const WhisperClipguard = {
   },
 
   /**
-   * Ask the page which of the command's words are visible, then tell the parent. A page
-   * that is gone, or that answers nothing, counts as "not on screen", so the write is
-   * blocked -- the safe default.
+   * Ask the page which of the command's words are visible, then tell the parent. When
+   * the page cannot be asked (gone, its actor failed, or no answer within
+   * VISIBILITY_TIMEOUT_MS) the parent is told so: a plain MED command is then written
+   * with a notice, and anything more dangerous stays blocked (decide.rs, Unchecked).
    */
   async _checkVisibility(event) {
     const wgp = event.windowGlobal;
-    let texts = [];
+    let texts = null;
     if (wgp && wgp.isCurrentGlobal && !wgp.isClosed) {
+      let timer = null;
       try {
         const actor = wgp.getActor("WhisperClipguard");
-        texts = await actor.sendQuery("FindVisibleText", {
-          probes: event.visibilityProbes,
+        const timeout = new Promise(resolve => {
+          timer = lazy.setTimeout(() => resolve(null), VISIBILITY_TIMEOUT_MS);
         });
+        texts = await Promise.race([
+          actor.sendQuery("FindVisibleText", { probes: event.visibilityProbes }),
+          timeout,
+        ]);
+        if (texts === null) {
+          log("the page did not answer the visibility check in time");
+        }
       } catch (e) {
         log("could not read the page for the visibility check:", e.message);
+        texts = null;
+      } finally {
+        if (timer) {
+          lazy.clearTimeout(timer);
+        }
       }
     }
-    event.resolveVisibility(texts || []);
+    if (Array.isArray(texts)) {
+      event.resolveVisibility(texts);
+    } else {
+      event.resolveVisibilityUnchecked();
+    }
   },
 
   /** The chrome window and <browser> that owns the writing page, or null. */

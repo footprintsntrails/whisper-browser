@@ -45,6 +45,8 @@ class ClipguardEvent final : public nsIClipguardEvent, public nsITimerCallback {
 
   void NotifyObservers();  // notify "clipguard-event" observers (subject: this)
   void CommitHeldText();
+  // Decide a held check with the page's answer (visibility 1, 2 or 3).
+  void Resolve(uint8_t aVisibility);
   void DropHold();
 
   RefPtr<ClipboardGuardHold> mHold;  // null for a notice-only event

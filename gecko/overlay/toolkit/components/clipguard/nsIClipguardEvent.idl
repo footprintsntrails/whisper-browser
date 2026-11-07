@@ -75,6 +75,13 @@ interface nsIClipguardEvent : nsISupports
    */
   void resolveVisibility(in Array<AString> aVisibleTexts);
 
+  /**
+   * For KIND_CHECK_VISIBILITY: the page could not be asked (its actor failed or did
+   * not answer in time). A plain MED command is then written with a notice; anything
+   * more dangerous stays blocked (clipguard::Visibility::Unchecked).
+   */
+  void resolveVisibilityUnchecked();
+
   /** For KIND_BLOCKED: whether the page's text is still held (60 seconds). */
   readonly attribute boolean canCopyAnyway;
 

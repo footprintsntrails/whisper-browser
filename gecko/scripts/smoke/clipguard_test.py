@@ -261,6 +261,8 @@ def main():
     ap.add_argument("--app", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--seconds", type=float, default=0)
+    ap.add_argument("--only", default="",
+                    help="comma-separated page names to run (default: all)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     report = Report()
@@ -285,6 +287,10 @@ def main():
             f.write('user_pref("whisper.import.offerOnFirstRun", false);\n')
             # Grant clipboard read to the test harness only (for the read-back probe).
             f.write('user_pref("dom.events.testing.asyncClipboard", true);\n')
+            # Browser and page console messages go to browser.log, so a failure in CI
+            # shows what Whisper's ClickFix code logged.
+            f.write('user_pref("devtools.console.stdout.chrome", true);\n')
+            f.write('user_pref("devtools.console.stdout.content", true);\n')
         log = open(os.path.join(a.out, "browser.log"), "w")
         env = dict(os.environ, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS="1")
         proc = subprocess.Popen(
@@ -295,6 +301,10 @@ def main():
             m.start_session()
             m.command("WebDriver:SetWindowRect", {"x": 0, "y": 0, "width": 1280, "height": 900})
             time.sleep(5)
+            only = {p.strip() for p in a.only.split(",") if p.strip()}
+            for kind in ("malicious", "legitimate"):
+                manifest[kind] = [s for s in manifest[kind]
+                                  if not only or s["page"].removesuffix(".html") in only]
             for scenario in manifest["malicious"]:
                 if scenario["page"] == "cross_origin_iframe.html":
                     scenario = dict(scenario, page="_cross_origin_iframe.html")

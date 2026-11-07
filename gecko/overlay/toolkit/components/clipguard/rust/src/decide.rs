@@ -25,7 +25,7 @@
 //! warning, `off` turns the check off; `clipguard.strict_script_copy` blocks every
 //! script write at LOW and above; a site allowed for this session is not blocked.
 
-use crate::{Level, Verdict};
+use crate::{Level, Reason, Verdict};
 
 /// Who put the text on the clipboard (`IPCTransferable.whisperCopySource`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,8 +90,14 @@ pub enum Visibility {
     Unknown = 0,
     /// Every line is on screen.
     Visible = 1,
-    /// Not on screen, or the page could not be checked.
+    /// Not on screen.
     NotVisible = 2,
+    /// The page could not be asked: its process did not answer in time, or the actor
+    /// failed. A MED command (a plain download-and-run, the shape of real install
+    /// instructions) is then written with a notice rather than blocked, so a broken
+    /// check never breaks every install button; HIGH and CRITICAL, and a write too
+    /// large to scan, stay blocked.
+    Unchecked = 3,
 }
 
 impl Visibility {
@@ -100,6 +106,7 @@ impl Visibility {
         match v {
             1 => Visibility::Visible,
             2 => Visibility::NotVisible,
+            3 => Visibility::Unchecked,
             _ => Visibility::Unknown,
         }
     }
@@ -225,6 +232,13 @@ pub fn decide(verdict: &Verdict, ctx: &Context, visibility: Visibility) -> Decis
         Visibility::Unknown => Decision::new(Action::CheckVisibility, true, Notice::None),
         Visibility::NotVisible => block(),
         Visibility::Visible => allow(if_visible),
+        // Fail open only for a plain MED command, and always with a notice.
+        Visibility::Unchecked
+            if verdict.level == Level::Med && !verdict.reasons.contains(Reason::Oversize) =>
+        {
+            allow(Notice::InstallerNotice)
+        }
+        Visibility::Unchecked => block(),
     };
     match verdict.level {
         Level::Critical => block(),
@@ -309,6 +323,36 @@ mod tests {
                 (Block, true, Notice::None)
             );
         }
+    }
+
+    #[test]
+    fn an_unanswered_check_fails_open_only_for_a_plain_med_command() {
+        use Action::*;
+        for s in SCRIPTS {
+            let c = ctx(s);
+            let unchecked = Visibility::Unchecked;
+            // MED, known installer or not: written, with a notice (never silently).
+            for known in [false, true] {
+                assert_eq!(
+                    d(Level::Med, known, c, unchecked),
+                    (Allow, true, Notice::InstallerNotice)
+                );
+            }
+            assert_eq!(
+                d(Level::High, false, c, unchecked),
+                (Block, true, Notice::None)
+            );
+            assert_eq!(
+                d(Level::Critical, false, c, unchecked),
+                (Block, true, Notice::None)
+            );
+            // A write too large to scan is MED by default, not by what it showed: blocked.
+            let mut big = verdict(Level::Med, false);
+            big.reasons.insert(Reason::Oversize);
+            let r = decide(&big, &c, unchecked);
+            assert_eq!((r.action, r.notice), (Block, Notice::None));
+        }
+        assert_eq!(Visibility::from_u8(3), Visibility::Unchecked);
     }
 
     #[test]

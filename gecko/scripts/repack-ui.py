@@ -68,6 +68,15 @@ FILES = [
     ("browser/omni.ja", "chrome/browser/content/whisper/settings/whisper-settings.mjs", f"{WHISPER}/content/settings/whisper-settings.mjs"),
     ("browser/omni.ja", "chrome/browser/content/whisper/settings/settings.css", f"{WHISPER}/content/settings/settings.css"),
     ("browser/omni.ja", "localization/en-US/whisper/whisper-settings.ftl", f"{WHISPER}/locales/en-US/whisper-settings.ftl"),
+    # ClickFix protection's interface (the engine is C++/Rust and needs the full build).
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperClipguard.sys.mjs", f"{WHISPER}/WhisperClipguard.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperClipguardChild.sys.mjs", f"{WHISPER}/WhisperClipguardChild.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperClipguardParent.sys.mjs", f"{WHISPER}/WhisperClipguardParent.sys.mjs"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/clipguard.css", f"{WHISPER}/content/clipguard.css"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/clipguard-details.xhtml", f"{WHISPER}/content/clipguard-details.xhtml"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/clipguard-details.css", f"{WHISPER}/content/clipguard-details.css"),
+    ("browser/omni.ja", "chrome/browser/content/whisper/settings/clipguard-settings.mjs", f"{WHISPER}/settings/clipguard-settings.mjs"),
+    ("browser/omni.ja", "localization/en-US/whisper/whisper-clipguard.ftl", f"{WHISPER}/locales/en-US/whisper-clipguard.ftl"),
 ]
 
 

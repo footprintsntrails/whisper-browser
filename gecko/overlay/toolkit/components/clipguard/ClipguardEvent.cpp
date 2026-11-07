@@ -174,9 +174,22 @@ NS_IMETHODIMP ClipguardEvent::ResolveVisibility(
       !mHold->mLive) {
     return NS_OK;
   }
-  mResolved = true;
-
   bool visible = clipguard::clipguard_is_visible(&mText, &aVisibleTexts);
+  Resolve(visible ? /* Visible */ 1 : /* NotVisible */ 2);
+  return NS_OK;
+}
+
+NS_IMETHODIMP ClipguardEvent::ResolveVisibilityUnchecked() {
+  if (mResolved || mKind != nsIClipguardEvent::KIND_CHECK_VISIBILITY || !mHold ||
+      !mHold->mLive) {
+    return NS_OK;
+  }
+  Resolve(/* Unchecked */ 3);
+  return NS_OK;
+}
+
+void ClipguardEvent::Resolve(uint8_t aVisibility) {
+  mResolved = true;
 
   clipguard::ClipguardVerdict verdict{};
   verdict.level = static_cast<uint8_t>(mLevel);
@@ -193,8 +206,8 @@ NS_IMETHODIMP ClipguardEvent::ResolveVisibility(
   ctx.user_copy_notice = StaticPrefs::clipguard_user_copy_notice();
   ctx.site_allowed = false;
   ctx.substituted = (mSource == static_cast<uint32_t>(ClipguardSource::PageReplacedCopy));
-  clipguard::ClipguardDecision decision = clipguard::clipguard_decide(
-      &verdict, &ctx, visible ? /* Visible */ 1 : /* NotVisible */ 2);
+  clipguard::ClipguardDecision decision =
+      clipguard::clipguard_decide(&verdict, &ctx, aVisibility);
 
   if (static_cast<ClipguardAction>(decision.action) == ClipguardAction::Allow) {
     // On screen after all: replace the placeholder with the page's text, then show
@@ -213,7 +226,6 @@ NS_IMETHODIMP ClipguardEvent::ResolveVisibility(
     mNotice = decision.notice;
     NotifyObservers();
   }
-  return NS_OK;
 }
 
 NS_IMETHODIMP ClipguardEvent::GetCanCopyAnyway(bool* aCan) {

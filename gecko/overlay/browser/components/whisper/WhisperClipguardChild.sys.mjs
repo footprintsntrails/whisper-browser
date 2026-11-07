@@ -182,23 +182,50 @@ export class WhisperClipguardChild extends JSWindowActorChild {
     return false;
   }
 
+  /**
+   * Whether the element's text is drawn on top, not covered by a higher layer. Samples
+   * points on the rendered text itself (its line boxes, not the element's box, which
+   * can be much wider than the text) and requires most of them to hit the element or a
+   * descendant. "Most", not "all": a code block's own copy button often sits over the
+   * end of a long line. Points outside the viewport are skipped; when none is inside
+   * (the text is below the fold), the position checks above decide.
+   *
+   * Known limit: elementFromPoint skips a cover with pointer-events: none.
+   */
   _isOnTop(win, el, rect) {
-    const xs = [0.5, 0.15, 0.85];
-    const ys = [0.5, 0.15, 0.85];
-    for (const fx of xs) {
-      for (const fy of ys) {
-        const x = rect.left + rect.width * fx;
-        const y = rect.top + rect.height * fy;
-        if (x < 0 || y < 0 || x > win.innerWidth || y > win.innerHeight) {
+    const doc = el.ownerDocument;
+    let lines = [];
+    try {
+      const range = doc.createRange();
+      range.selectNodeContents(el);
+      lines = Array.from(range.getClientRects()).filter(r => r.width >= 1 && r.height >= 1);
+    } catch (e) {
+      lines = [];
+    }
+    if (!lines.length) {
+      lines = [rect];
+    }
+    // At most 4 lines: first, last and two between.
+    if (lines.length > 4) {
+      const n = lines.length;
+      lines = [lines[0], lines[Math.floor(n / 3)], lines[Math.floor((2 * n) / 3)], lines[n - 1]];
+    }
+    let tried = 0;
+    let onTop = 0;
+    for (const line of lines) {
+      for (const fx of [0.1, 0.5, 0.9]) {
+        const x = line.left + line.width * fx;
+        const y = line.top + line.height / 2;
+        if (x < 0 || y < 0 || x >= win.innerWidth || y >= win.innerHeight) {
           continue;
         }
-        const hit = el.ownerDocument.elementFromPoint(x, y);
-        if (hit && (hit == el || el.contains(hit) || hit.contains(el))) {
-          return true;
+        tried++;
+        const hit = doc.elementFromPoint(x, y);
+        if (hit && (hit == el || el.contains(hit))) {
+          onTop++;
         }
       }
     }
-    // No sample point reached the element (fully covered, or entirely off the viewport).
-    return false;
+    return tried == 0 || onTop / tried >= 0.6;
   }
 }
