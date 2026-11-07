@@ -1,0 +1,62 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* "Show what it tried to copy": the display string the clipguard crate built (hidden
+ * characters already made visible, e.g. <U+200B>). Shown in a monospace font, wrapping,
+ * left-to-right, so no part of it can hide off the edge. */
+
+:root {
+  --clipguard-gap: 16px;
+}
+
+body {
+  margin: 0;
+  padding: var(--clipguard-gap);
+  min-width: 420px;
+  max-width: 640px;
+  font: message-box;
+}
+
+main {
+  display: flow-root;
+}
+
+h1 {
+  font-size: 1.1em;
+  margin: 0 0 0.5em;
+}
+
+h2 {
+  font-size: 0.9em;
+  margin: 1em 0 0.25em;
+  color: var(--text-color-deemphasized, GrayText);
+}
+
+p {
+  margin: 0 0 0.5em;
+}
+
+.mono {
+  font-family: monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+  direction: ltr;
+  background-color: var(--in-content-box-background, Field);
+  color: var(--in-content-text-color, FieldText);
+  border: 1px solid var(--in-content-box-border-color, ThreeDShadow);
+  border-radius: 4px;
+  padding: 8px;
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+#hosts {
+  font-weight: 600;
+}
+
+.dialog-button-box {
+  margin-top: var(--clipguard-gap);
+}

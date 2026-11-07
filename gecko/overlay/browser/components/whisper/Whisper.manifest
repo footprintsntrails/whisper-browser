@@ -6,3 +6,6 @@ category browser-window-delayed-startup moz-src:///browser/components/whisper/Wh
 category browser-window-unload moz-src:///browser/components/whisper/WhisperUI.sys.mjs WhisperUI.onWindowUnload
 # Offers Firefox's import window once, on the first start of a new profile.
 category browser-window-delayed-startup moz-src:///browser/components/whisper/WhisperImport.sys.mjs WhisperImport.onWindowDelayedStartup
+# ClickFix protection: registers the WhisperClipguard window actor and listens for the
+# "clipguard-event" the parent-process clipboard code sends.
+category browser-before-ui-startup moz-src:///browser/components/whisper/WhisperClipguard.sys.mjs WhisperClipguard.init

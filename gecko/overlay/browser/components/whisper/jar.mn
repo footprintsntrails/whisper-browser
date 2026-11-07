@@ -10,6 +10,12 @@ browser.jar:
     content/browser/whisper/fonts/Inter-Medium.woff2    (content/fonts/Inter-Medium.woff2)
     content/browser/whisper/fonts/Inter-SemiBold.woff2  (content/fonts/Inter-SemiBold.woff2)
     content/browser/whisper/fonts/OFL.txt               (content/fonts/OFL.txt)
+#   Whisper ClickFix protection: the doorhanger icon, the "what it tried to copy"
+#   dialog, and the settings fragment for the Whisper preferences pane.
+    content/browser/whisper/clipguard.css            (content/clipguard.css)
+    content/browser/whisper/clipguard-details.xhtml  (content/clipguard-details.xhtml)
+    content/browser/whisper/clipguard-details.css    (content/clipguard-details.css)
+    content/browser/whisper/settings/clipguard-settings.mjs  (settings/clipguard-settings.mjs)
 
 # Whisper's strings. Only English for now; the file is not part of Mozilla's
 # localization, so it is shipped as-is for every locale.
@@ -17,3 +23,4 @@ browser.jar:
     whisper/whisper.ftl                              (locales/en-US/whisper.ftl)
     whisper/whisper-about.ftl                        (locales/en-US/whisper-about.ftl)
     whisper/whisper-import.ftl                       (locales/en-US/whisper-import.ftl)
+    whisper/whisper-clipguard.ftl                    (locales/en-US/whisper-clipguard.ftl)

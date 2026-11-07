@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+  <head>
+    <meta charset="utf-8"/>
+    <link rel="stylesheet" href="chrome://global/skin/global.css"/>
+    <link rel="stylesheet"
+          href="chrome://browser/content/whisper/clipguard-details.css"/>
+    <link rel="localization" href="browser/whisper/whisper-clipguard.ftl"/>
+    <title data-l10n-id="clipguard-details-title"></title>
+  </head>
+  <body>
+    <main>
+      <h1 data-l10n-id="clipguard-details-title"></h1>
+      <p data-l10n-id="clipguard-details-intro"></p>
+      <section id="hosts-section" hidden="hidden">
+        <h2 data-l10n-id="clipguard-details-hosts"></h2>
+        <p id="hosts" class="mono" dir="ltr"></p>
+      </section>
+      <h2 data-l10n-id="clipguard-details-text"></h2>
+      <!-- The text is set as textContent, never parsed as markup, and shown
+           left-to-right in a monospace font. -->
+      <pre id="text" class="mono" dir="ltr"></pre>
+    </main>
+    <xul:hbox class="dialog-button-box" pack="end">
+      <xul:button id="close" dlgtype="cancel" data-l10n-id="clipguard-details-close"/>
+    </xul:hbox>
+    <script type="application/javascript">
+      // eslint-disable-next-line no-undef
+      const args = window.arguments &amp;&amp; window.arguments[0] ? window.arguments[0] : {};
+      const textEl = document.getElementById("text");
+      textEl.textContent = args.text || "";
+      if (args.hosts) {
+        document.getElementById("hosts-section").hidden = false;
+        document.getElementById("hosts").textContent = args.hosts;
+      }
+      const close = document.getElementById("close");
+      close.addEventListener("command", () => window.close());
+      close.addEventListener("click", () => window.close());
+      window.addEventListener("keydown", e => {
+        if (e.key === "Escape") {
+          window.close();
+        }
+      });
+      window.focus();
+    </script>
+  </body>
+</html>
