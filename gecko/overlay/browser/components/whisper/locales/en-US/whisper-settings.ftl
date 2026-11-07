@@ -49,6 +49,14 @@ whisper-settings-add-engine =
 whisper-settings-manage-engines =
     .label = All search engines and shortcuts
 
+## New tabs
+
+whisper-settings-newtabs-group =
+    .label = New tabs
+whisper-settings-quick-open =
+    .label = Ctrl+T and + open the address bar
+    .description = Type an address or a search: Enter opens it in a new tab, Esc leaves nothing behind. Off: they open a new tab page. File › New Tab always opens one.
+
 ## Default browser
 
 whisper-settings-default-group =

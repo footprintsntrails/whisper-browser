@@ -38,6 +38,7 @@ const MODULE = "chrome://whisper/content/settings/whisper-settings.mjs";
 const GROUPS = [
   "whisperAbout",
   "whisperSearch",
+  "whisperNewTabs",
   "whisperDefaultBrowser",
   "whisperDns",
   "whisperClipguard",

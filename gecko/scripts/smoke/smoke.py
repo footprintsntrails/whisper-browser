@@ -270,6 +270,48 @@ return {
 };
 """
 
+PLUS_JS = r"""
+// "+" opens the address bar in place (WhisperQuickOpen.sys.mjs): clicking the tab
+// strip's "+" opens no tab and empties and focuses the address bar; Enter on an
+// address opens it in one new tab; "+" then Esc leaves the tabs as they were and the
+// page's address back in the field; Ctrl+T's command does the same as "+".
+const [url] = args;
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const state = () => ({ tabs: gBrowser.tabs.length, value: gURLBar.value,
+  focused: !!document.activeElement?.closest?.("#urlbar"), url: gBrowser.selectedBrowser.currentURI.spec });
+const button = ["tabs-newtab-button", "vertical-tabs-newtab-button", "new-tab-button"]
+  .map(id => document.getElementById(id)).find(b => b?.checkVisibility());
+if (!button) {
+  return { error: "no visible + button" };
+}
+const click = async () => {
+  const r = button.getBoundingClientRect();
+  window.synthesizeMouseEvent("mousedown", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
+  window.synthesizeMouseEvent("mouseup", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
+  await sleep(800);
+};
+const out = { button: button.id, before: state() };
+await click();
+out.afterPlus = state();
+gURLBar.value = url;
+gURLBar.handleCommand(new KeyboardEvent("keydown", { key: "Enter" }));
+for (let i = 0; i < 20 && gBrowser.selectedBrowser.currentURI.spec != url; i++) {
+  await sleep(250);
+}
+out.afterEnter = state();
+await click();
+gURLBar.inputField.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+await sleep(500);
+out.afterEsc = state();
+document.getElementById("cmd_newNavigatorTabNoEvent").doCommand();
+await sleep(500);
+out.afterCtrlT = state();
+gURLBar.inputField.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+await sleep(500);
+out.afterCtrlTEsc = state();
+return out;
+"""
+
 RELOAD_JS = r"""
 // Clicks the toolbar's reload button and checks that the page loaded again.
 const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -1141,6 +1183,19 @@ def main():
 
         page = site.url("page.html")
         report.check("a local test page loads", m.run(LOAD_JS, page) == page, page)
+        plus_page = site.url("probe.html")
+        plus = m.run(PLUS_JS, plus_page)
+        report.facts["plus"] = plus
+        b, p, e = plus.get("before", {}), plus.get("afterPlus", {}), plus.get("afterEnter", {})
+        report.check("+ opens the address bar in place: no new tab, the field empty and focused",
+                     p.get("tabs") == b.get("tabs") and p.get("value") == "" and p.get("focused"), plus)
+        report.check("Enter after + opens the address in one new tab",
+                     e.get("tabs") == b.get("tabs", 0) + 1 and e.get("url") == plus_page, plus)
+        esc, ct, cte = plus.get("afterEsc", {}), plus.get("afterCtrlT", {}), plus.get("afterCtrlTEsc", {})
+        report.check("+ then Esc leaves no tab and puts the page's address back; Ctrl+T does the same",
+                     esc.get("tabs") == e.get("tabs") and esc.get("value") == plus_page and not esc.get("focused")
+                     and ct.get("tabs") == e.get("tabs") and ct.get("value") == "" and ct.get("focused")
+                     and cte.get("tabs") == e.get("tabs") and cte.get("value") == plus_page, plus)
 
         pointer = Pointer(m)
         report.facts["pointer"] = "xdotool" if pointer.xdotool else "synthesized"

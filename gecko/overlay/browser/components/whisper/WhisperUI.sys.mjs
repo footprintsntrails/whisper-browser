@@ -28,6 +28,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
   WhisperLayout: "moz-src:///browser/components/whisper/WhisperLayout.sys.mjs",
   WhisperNewTab: "moz-src:///browser/components/whisper/WhisperNewTab.sys.mjs",
+  WhisperQuickOpen:
+    "moz-src:///browser/components/whisper/WhisperQuickOpen.sys.mjs",
   WhisperSettings:
     "moz-src:///browser/components/whisper/WhisperSettings.sys.mjs",
   WhisperSidebar: "moz-src:///browser/components/whisper/WhisperSidebar.sys.mjs",
@@ -95,6 +97,9 @@ export const WhisperUI = {
   onWindowDelayedStartup(win) {
     guarded("sidebar modes", () => lazy.WhisperSidebar.initWindow(win));
     guarded("address bar results", () => lazy.WhisperUrlbar.initWindow(win));
+    guarded("+ opens the address bar", () =>
+      lazy.WhisperQuickOpen.initWindow(win)
+    );
     if (!this._uboSetupStarted) {
       this._uboSetupStarted = true;
       guarded("uBlock Origin first run", () => this._setUpUBlockOrigin());
@@ -108,6 +113,9 @@ export const WhisperUI = {
     guarded("layout cleanup", () => lazy.WhisperLayout.uninitWindow(win));
     guarded("address bar results cleanup", () =>
       lazy.WhisperUrlbar.uninitWindow(win)
+    );
+    guarded("+ opens the address bar cleanup", () =>
+      lazy.WhisperQuickOpen.uninitWindow(win)
     );
   },
 

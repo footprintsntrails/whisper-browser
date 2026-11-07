@@ -58,6 +58,7 @@ FILES = [
     ("browser/omni.ja", "chrome/browser/content/whisper/newtab/newtab.mjs", f"{WHISPER}/content/newtab/newtab.mjs"),
     ("browser/omni.ja", "localization/en-US/whisper/whisper-newtab.ftl", f"{WHISPER}/locales/en-US/whisper-newtab.ftl"),
     ("omni.ja", "moz-src/browser/components/whisper/WhisperSettings.sys.mjs", f"{WHISPER}/WhisperSettings.sys.mjs"),
+    ("omni.ja", "moz-src/browser/components/whisper/WhisperQuickOpen.sys.mjs", f"{WHISPER}/WhisperQuickOpen.sys.mjs"),
     ("browser/omni.ja", "chrome/browser/content/whisper/settings/whisper-settings.mjs", f"{WHISPER}/content/settings/whisper-settings.mjs"),
     ("browser/omni.ja", "chrome/browser/content/whisper/settings/settings.css", f"{WHISPER}/content/settings/settings.css"),
     ("browser/omni.ja", "localization/en-US/whisper/whisper-settings.ftl", f"{WHISPER}/locales/en-US/whisper-settings.ftl"),

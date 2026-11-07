@@ -218,6 +218,10 @@ pref("browser.tabs.inTitlebar", 1);
 // Switch with Ctrl+Alt+S or from the sidebar's right-click menu.
 pref("whisper.sidebar.mode", "expanded");
 
+// "+" and Ctrl+T open the address bar where it is; Enter opens the result in a new tab,
+// Esc leaves no tab behind (WhisperQuickOpen.sys.mjs). false: they open a new tab page.
+pref("whisper.newtab.addressBar", true);
+
 // --- Settings (WhisperSettings.sys.mjs): Whisper's pane, Mozilla's offers out --------
 // Firefox Relay (Mozilla's email masks) is not offered when you save a password.
 pref("signon.firefoxRelay.feature", "disabled");

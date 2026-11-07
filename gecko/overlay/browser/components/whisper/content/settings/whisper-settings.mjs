@@ -65,6 +65,10 @@ Preferences.addSetting({
   onUserClick: () => gotoPref("paneSearch"),
 });
 
+// --- New tabs -------------------------------------------------------------------------
+
+prefSetting("whisperQuickOpen", "whisper.newtab.addressBar");
+
 // --- Secure DNS -----------------------------------------------------------------------
 // The DNS settings (whisperDnsStrict, whisperDnsSession, whisperDnsSessionOn) are
 // added by WhisperSettings.sys.mjs, because Firefox's privacy pane shows them too.
@@ -211,6 +215,17 @@ SettingGroupManager.registerGroups({
         id: "whisperManageEngines",
         l10nId: "whisper-settings-manage-engines",
         control: "moz-box-button",
+      },
+    ],
+  },
+  whisperNewTabs: {
+    l10nId: "whisper-settings-newtabs-group",
+    headingLevel: 2,
+    items: [
+      {
+        id: "whisperQuickOpen",
+        l10nId: "whisper-settings-quick-open",
+        control: "moz-toggle",
       },
     ],
   },
