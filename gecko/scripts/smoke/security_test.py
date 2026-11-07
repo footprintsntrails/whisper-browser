@@ -431,14 +431,13 @@ try {
 """
 
 COPY_LINK_JS = r"""
-// Right-click the link like a user and choose Copy Link.
-const [x, y] = args;
+// After a real right-click on the link (right_click below): wait for the content context
+// menu and choose Copy Link.
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const menu = document.getElementById("contentAreaContextMenu");
-const shown = new Promise(r => menu.addEventListener("popupshown", r, { once: true }));
-const box = gBrowser.selectedBrowser.getBoundingClientRect();
-window.synthesizeMouseEvent("contextmenu", box.left + x, box.top + y, { button: 2 });
-await Promise.race([shown, sleep(3000)]);
+for (let i = 0; i < 30 && menu.state != "open"; i++) {
+  await sleep(100);
+}
 if (menu.state != "open") {
   return { error: "the context menu did not open" };
 }
@@ -448,11 +447,6 @@ document.getElementById("context-copylink").doCommand();
 menu.hidePopup();
 await sleep(300);
 return items;
-"""
-
-LINK_RECT_JS = """
-const r = document.getElementById(arguments[0]).getBoundingClientRect();
-return [r.left + r.width / 2, r.top + r.height / 2];
 """
 
 URL_JS = "return gBrowser.selectedBrowser.currentURI.spec;"
@@ -819,6 +813,27 @@ def click(b, element_id):
         b.m.command("Marionette:SetContext", {"value": "chrome"})
 
 
+def right_click(b, element_id):
+    """A real right-click (WebDriver actions in the page), which opens the content context
+    menu; an event synthesized on the chrome window does not reach the page's process."""
+    b.m.command("Marionette:SetContext", {"value": "content"})
+    try:
+        el = b.m.command("WebDriver:FindElement", {"using": "css selector", "value": f"#{element_id}"})
+        ref = el.get("value", el)
+        ref = ref.get("element-6066-11e4-a52e-4f735466cecf", ref) if isinstance(ref, dict) else ref
+        origin = {"element-6066-11e4-a52e-4f735466cecf": ref}
+        b.m.command("WebDriver:PerformActions", {"actions": [{
+            "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+            "actions": [
+                {"type": "pointerMove", "x": 0, "y": 0, "origin": origin},
+                {"type": "pointerDown", "button": 2},
+                {"type": "pointerUp", "button": 2},
+            ]}]})
+        b.m.command("WebDriver:ReleaseActions", {})
+    finally:
+        b.m.command("Marionette:SetContext", {"value": "chrome"})
+
+
 def test_programs(b, base, report, out):
     program = b.chrome(HANDLER_JS)
     b.navigate(f"{base}/programs.html")
@@ -898,9 +913,9 @@ def test_cleanlinks(b, base, report):
     report.check("cleanlinks: following a link to another site drops utm_*, fbclid and gclid, keeps id",
                  url.startswith("http://localhost:") and url.endswith("/landing.html?id=7"), url)
     b.navigate(f"{base}/cleanlinks.html")
-    x, y = b.content(LINK_RECT_JS, "out")
     b.chrome(SET_CLIPBOARD_JS, "nothing copied yet")
-    items = b.chrome(COPY_LINK_JS, x, y)
+    right_click(b, "out")
+    items = b.chrome(COPY_LINK_JS)
     copied = b.chrome(CLIPBOARD_JS)
     report.facts["cleanlinks_copy"] = {"items": items, "copied": copied}
     report.check("cleanlinks: Copy Link copies the clean link (Copy Clean Link stays in the menu)",
