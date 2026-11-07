@@ -430,7 +430,7 @@ static void NotifyScriptCopy(const nsAString& aText) {
   bool substituted = (source == ClipguardSource::PageReplacedCopy);
   if (substituted) {
     nsAutoString selection;
-    aTransferable->GetWhisperSelection(selection);
+    selection = aTransferable->GetWhisperSelection();
     if (!selection.IsEmpty()) {
       substituted =
           clipguard::clipguard_is_substitution(&selection, &text, verdict.level);

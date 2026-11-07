@@ -6,6 +6,7 @@ autogen_warning = """/* DO NOT MODIFY THIS MANUALLY! This file was generated usi
 #include "nsTArray.h"
 """
 include_version = true
+include_guard = "mozilla_Clipguard_h"
 braces = "SameLine"
 line_length = 100
 tab_width = 2

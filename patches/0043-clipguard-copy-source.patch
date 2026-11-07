@@ -156,8 +156,8 @@ is more dangerous than what the person selected) from a harmless one (a tidy-up,
 +  mWhisperCopySource = aSource;
 +}
 +
-+void nsTransferable::GetWhisperSelection(nsAString& aSelection) {
-+  aSelection = mWhisperSelection;
++const nsAString& nsTransferable::GetWhisperSelection() {
++  return mWhisperSelection;
 +}
 +
 +void nsTransferable::SetWhisperSelection(const nsAString& aSelection) {
@@ -186,7 +186,7 @@ is more dangerous than what the person selected) from a harmless one (a tidy-up,
    aIPCTransferable->referrerInfo() = aTransferable->GetReferrerInfo();
 +  aIPCTransferable->whisperCopySource() = aTransferable->GetWhisperCopySource();
 +  nsAutoString whisperSelection;
-+  aTransferable->GetWhisperSelection(whisperSelection);
++  whisperSelection = aTransferable->GetWhisperSelection();
 +  aIPCTransferable->whisperSelection() = whisperSelection;
  }
  
