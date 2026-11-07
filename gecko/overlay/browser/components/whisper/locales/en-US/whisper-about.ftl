@@ -27,3 +27,6 @@ whisper-about-based-on = Based on Firefox { $firefoxVersion }
 #   $firefoxVersion (String): the Firefox version Whisper is built from, for example 159.0.1
 #   $buildID (String): the build ID, the time the build was made (YYYYMMDDhhmmss)
 whisper-about-based-on-build = Based on Firefox { $firefoxVersion }, build { $buildID }
+
+# Shown under "Based on Firefox", as visibly as that line.
+whisper-about-not-mozilla = { -brand-short-name } is not affiliated with or endorsed by Mozilla. Firefox is a trademark of the Mozilla Foundation.

@@ -393,6 +393,8 @@ return {
   title: doc.title,
   version: text("version"),
   basedOn: text("whisperBasedOn"),
+  notMozilla: text("whisperNotMozilla"),
+  notMozillaShown: shown("whisperNotMozilla"),
   helpLinkShown: shown("aboutDialogHelpLink"),
   feedbackLinkShown: shown("submit-feedback"),
 };
@@ -713,6 +715,10 @@ def main():
         if a.version:
             report.check(f"about dialog says 'Based on Firefox {a.version}'",
                          about.get("basedOn") == f"Based on Firefox {a.version}", about.get("basedOn"))
+        report.check("about dialog says Whisper is not affiliated with or endorsed by Mozilla",
+                     about.get("notMozillaShown") and "not affiliated with or endorsed by Mozilla" in
+                     (about.get("notMozilla") or "") and "Firefox is a trademark of the Mozilla Foundation"
+                     in (about.get("notMozilla") or ""), about.get("notMozilla"))
         report.check("about dialog has no Mozilla help or feedback links",
                      not about.get("helpLinkShown") and not about.get("feedbackLinkShown"), about)
         sc = m.run(SHORTCUT_JS)

@@ -43,3 +43,11 @@
 .bottom-link:not([href="about:license"]) {
   display: none;
 }
+
+/* Whisper's lines under the version (WhisperAbout.sys.mjs): added after the dialog has
+ * sized itself, so they must not shrink while it grows to fit them. */
+#whisperAboutLines,
+#whisperBasedOn,
+#whisperNotMozilla {
+  flex-shrink: 0;
+}
