@@ -586,7 +586,10 @@ const shown = id => {
 return {
   title: doc.title,
   version: text("version"),
+  channel: text("whisperChannel"),
+  build: text("whisperBuild"),
   basedOn: text("whisperBasedOn"),
+  releaseNotes: doc.getElementById("releasenotes")?.href ?? null,
   notMozilla: text("whisperNotMozilla"),
   notMozillaShown: shown("whisperNotMozilla"),
   helpLinkShown: shown("aboutDialogHelpLink"),
@@ -958,11 +961,17 @@ def main():
         report.facts["about"] = about
         capture(m, os.path.join(a.out, "2b-about.png"), report)
         m.run(CLOSE_ABOUT_JS)
-        whisper_line = f"Whisper {release['WHISPER_VERSION']} (64-bit)"
-        report.check(f"about dialog says '{whisper_line}'", about.get("version") == whisper_line, about)
+        whisper_line = f"Whisper {release['WHISPER_VERSION']}"
+        report.check(f"about dialog says '{whisper_line}', the edition and the build date",
+                     about.get("version") == whisper_line and about.get("channel") in ("Release", "Canary")
+                     and re.fullmatch(r"64-bit · Built .*\d{4}.*", about.get("build") or "") is not None, about)
+        report.check("about dialog's \"What's new\" opens this version's release notes (none in Canary)",
+                     about.get("releaseNotes") is None if about.get("channel") == "Canary" else
+                     (about.get("releaseNotes") or "").endswith(f"/releases/tag/v{release['WHISPER_VERSION']}"),
+                     about.get("releaseNotes"))
         if a.version:
-            report.check(f"about dialog says 'Based on Firefox {a.version}'",
-                         about.get("basedOn") == f"Based on Firefox {a.version}", about.get("basedOn"))
+            report.check(f"about dialog says 'Engine: Firefox {a.version}'",
+                         about.get("basedOn") == f"Engine: Firefox {a.version}", about.get("basedOn"))
         report.check("about dialog says Whisper is not affiliated with or endorsed by Mozilla",
                      about.get("notMozillaShown") and "not affiliated with or endorsed by Mozilla" in
                      (about.get("notMozilla") or "") and "Firefox is a trademark of the Mozilla Foundation"

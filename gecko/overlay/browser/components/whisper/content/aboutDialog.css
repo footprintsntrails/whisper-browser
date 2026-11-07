@@ -2,37 +2,202 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Whisper's about dialog: the Firefox dialog in Whisper's colours, without the parts
- * that speak for Mozilla (the "designed by Mozilla" and donation lines, Mozilla's terms
- * and privacy links, Firefox's trademark line, replaced by Whisper's own notice). The
- * licence link and the version stay. Loaded by WhisperAbout.sys.mjs over Firefox's own
- * chrome://branding/content/aboutDialog.css, which stays Firefox's because web pages
- * can load it. */
+/* Whisper's about dialog in the Cast look: platinum on Cast black with the grain,
+ * Inter, the logo tile beside a heading with the version and the channel pill, the
+ * build and engine lines, Firefox's update state with its button, Whisper's notice,
+ * and the licence link. Hidden: the parts that speak for Mozilla (the "designed by
+ * Mozilla" and donation lines, Mozilla's terms and privacy links, Firefox's trademark
+ * line, replaced by Whisper's notice). Loaded by WhisperAbout.sys.mjs over Firefox's
+ * own chrome://branding/content/aboutDialog.css, which stays Firefox's because web
+ * pages can load it. */
+
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; }
+
+:root {
+  --w-black: #111316;
+  --w-text: #d3d9df;
+  --w-bright: #eef1f4;
+  --w-muted: #8e98a3;
+  --w-line: rgb(211 217 223 / 0.1);
+  --w-focus: #a7c7e7;
+  --w-canary: #eadca0;
+  font-family: "Whisper Inter", system-ui, sans-serif !important;
+}
 
 @media not ((prefers-contrast) and (prefers-color-scheme: light)) {
   #aboutDialogContainer {
-    background-color: #111316;
-    color: #d3d9df;
+    background: url("chrome://whisper/content/grain.png"), var(--w-black);
+    color: var(--w-text);
     color-scheme: dark;
   }
 
   #bottomBox {
-    background-color: #0b0d0f;
+    background: transparent;
   }
 
   .text-link {
-    color: #a7c7e7;
+    color: var(--w-focus) !important;
+    text-decoration: none !important;
+
+    &:hover {
+      text-decoration: underline !important;
+    }
   }
 }
 
+#clientBox {
+  padding: 28px 32px 20px 28px;
+  gap: 22px;
+}
+
+/* The logo: a 64 px tile at the heading's height */
+#leftBox {
+  flex: none;
+  min-width: 64px;
+  min-height: 64px;
+  margin: 2px 0 0;
+  background-size: 64px 64px;
+  background-position: center top;
+}
+
 #rightBox {
-  background-size: auto 40px;
-  margin-inline: 30px;
-  padding-top: 64px;
+  background-image: none;
+  margin: 0;
+  padding: 0;
+  min-width: 360px;
+  max-width: 420px;
+}
+
+/* Heading: version and channel */
+#whisperAboutHeader {
+  gap: 10px;
+}
+#version {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--w-bright);
+}
+#whisperChannel {
+  margin: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--w-text);
+  background: rgb(211 217 223 / 0.1);
+
+  &[canary] {
+    color: var(--w-canary);
+    background: rgb(234 220 160 / 0.14);
+  }
+}
+
+#whisperAboutMeta,
+#whisperBasedOn {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--w-muted);
+}
+#whisperAboutMeta {
+  margin-block-start: 6px;
+
+  > label {
+    margin: 0;
+  }
+}
+#releasenotes {
+  margin: 0 !important;
+
+  &::before {
+    content: "·";
+    display: inline-block;
+    color: var(--w-muted);
+    margin-inline: 6px;
+  }
+}
+
+/* Update state: Firefox's deck, as one line with its button */
+#detailsBox {
+  margin-block-start: 18px;
+  padding-block-start: 16px;
+  border-top: 1px solid var(--w-line);
+}
+#updateBox {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--w-text);
+  min-height: 32px;
+}
+/* Firefox lays the update state out on a grid shared with the version row, which
+ * Whisper moved to the heading: one column here. */
+#updateInfo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+#updateDeck {
+  description {
+    line-height: 20px;
+  }
+
+  /* A deck is as tall as its tallest panel; only the state shown takes room. */
+  > :not(.deck-selected) {
+    display: none !important;
+  }
+}
+#updateDeck button,
+#whisperCheckAgain {
+  appearance: none;
+  margin: 0;
+  min-height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--w-text);
+  color: var(--w-black);
+  font: inherit;
+  font-weight: 600;
+
+  &:hover {
+    background: var(--w-bright);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--w-focus);
+    outline-offset: 2px;
+  }
+}
+#whisperCheckAgain {
+  margin-inline: auto 0;
+}
+
+#updateIcon {
+  margin-inline: 0 8px;
+
+  &.noUpdatesFound {
+    fill: var(--w-focus) !important;
+  }
+}
+
+#whisperNotMozilla {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--w-muted);
 }
 
 #bottomBox {
-  padding: 15px 10px;
+  min-height: 0;
+  padding: 12px 32px 14px;
+  border-top: 1px solid var(--w-line);
+  font-size: 12px;
 }
 
 #communityDesc,
@@ -44,9 +209,11 @@
   display: none;
 }
 
-/* Whisper's lines under the version (WhisperAbout.sys.mjs): added after the dialog has
- * sized itself, so they must not shrink while it grows to fit them. */
+/* Whisper's lines (WhisperAbout.sys.mjs) are added after the dialog has sized itself,
+ * so they must not shrink while it grows to fit them. */
 #whisperAboutLines,
+#whisperAboutHeader,
+#whisperAboutMeta,
 #whisperBasedOn,
 #whisperNotMozilla {
   flex-shrink: 0;
