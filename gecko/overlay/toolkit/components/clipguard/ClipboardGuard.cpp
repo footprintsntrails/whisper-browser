@@ -4,11 +4,15 @@
 
 #include "ClipboardGuard.h"
 
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Clipguard.h"  // the clipguard Rust crate (cbindgen)
 #include "mozilla/ClipguardEvent.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_clipguard.h"
+#include "mozilla/StaticPtr.h"
+#include "mozilla/TimeStamp.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/WindowContext.h"
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "nsComponentManagerUtils.h"
@@ -130,7 +134,164 @@ bool SiteAllowed(WindowContext* aWindowContext) {
   return permission == nsIPermissionManager::ALLOW_ACTION;
 }
 
+// Copies every text flavor aTo can import from aFrom (text/plain, text/html).
+void CopyTextFlavors(nsITransferable* aFrom, nsITransferable* aTo) {
+  for (const char* flavor : {kTextMime, kHTMLMime}) {
+    nsCOMPtr<nsISupports> data;
+    if (NS_SUCCEEDED(aFrom->GetTransferData(flavor, getter_AddRefs(data))) && data) {
+      aTo->AddDataFlavor(flavor);
+      aTo->SetTransferData(flavor, data);
+    }
+  }
+}
+
+// A fresh transferable holding a copy of aSource's text flavors (for the read-back store,
+// so it is not the same object that later has its trailing break cut for the clipboard).
+nsCOMPtr<nsITransferable> CloneTextTransferable(nsITransferable* aSource,
+                                                nsIPrincipal* aPrincipal) {
+  nsCOMPtr<nsITransferable> trans =
+      do_CreateInstance("@mozilla.org/widget/transferable;1");
+  if (!trans) {
+    return nullptr;
+  }
+  trans->Init(nullptr);
+  trans->SetDataPrincipal(aPrincipal);
+  CopyTextFlavors(aSource, trans);
+  return trans;
+}
+
+// One held page's own text, for same-origin read-back while the block is in effect.
+struct ReadbackEntry {
+  nsIClipboard::ClipboardType mType = nsIClipboard::kGlobalClipboard;
+  uint64_t mTopBrowsingContextId = 0;
+  nsCOMPtr<nsIPrincipal> mPrincipal;
+  nsCOMPtr<nsITransferable> mOwnText;
+  mozilla::TimeStamp mExpiry;
+};
+
+// At most one entry per clipboard type; the global clipboard is the only one guarded.
+mozilla::StaticAutoPtr<nsTArray<ReadbackEntry>> sReadback;
+
+nsTArray<ReadbackEntry>& Readback() {
+  if (!sReadback) {
+    sReadback = new nsTArray<ReadbackEntry>();
+    ClearOnShutdown(&sReadback);
+  }
+  return *sReadback;
+}
+
+// The top browsing context id and content principal for a window context, or false.
+bool WriterIdentity(WindowContext* aWindowContext, uint64_t& aTopBcId,
+                    nsCOMPtr<nsIPrincipal>& aPrincipal) {
+  if (!aWindowContext) {
+    return false;
+  }
+  dom::BrowsingContext* bc = aWindowContext->GetBrowsingContext();
+  RefPtr<WindowGlobalParent> wgp = aWindowContext->Canonical();
+  if (!bc || !wgp) {
+    return false;
+  }
+  aPrincipal = wgp->DocumentPrincipal();
+  if (!aPrincipal || !aPrincipal->GetIsContentPrincipal()) {
+    return false;
+  }
+  aTopBcId = bc->Top()->Id();
+  return true;
+}
+
+// The read-back entry for this type, matched to a reader that is the same page (same top
+// browsing context and the same origin) and not expired; prunes expired entries.
+ReadbackEntry* MatchReadback(nsIClipboard::ClipboardType aWhichClipboard,
+                             WindowContext* aReaderWindowContext,
+                             nsIPrincipal* aReaderPrincipal) {
+  if (!sReadback || !aReaderWindowContext) {
+    return nullptr;
+  }
+  dom::BrowsingContext* bc = aReaderWindowContext->GetBrowsingContext();
+  RefPtr<WindowGlobalParent> wgp = aReaderWindowContext->Canonical();
+  if (!bc || !wgp) {
+    return nullptr;
+  }
+  uint64_t readerTopBc = bc->Top()->Id();
+  // The snapshot read path passes the reader principal explicitly; the sync read path
+  // takes it from the reader window.
+  nsCOMPtr<nsIPrincipal> readerPrincipal =
+      aReaderPrincipal ? aReaderPrincipal : wgp->DocumentPrincipal();
+  if (!readerPrincipal || !readerPrincipal->GetIsContentPrincipal()) {
+    return nullptr;
+  }
+  auto& entries = Readback();
+  mozilla::TimeStamp now = mozilla::TimeStamp::Now();
+  for (size_t i = entries.Length(); i > 0; --i) {
+    ReadbackEntry& e = entries[i - 1];
+    if (now > e.mExpiry) {
+      entries.RemoveElementAt(i - 1);
+      continue;
+    }
+    if (e.mType == aWhichClipboard && e.mTopBrowsingContextId == readerTopBc &&
+        e.mPrincipal && e.mPrincipal->Equals(readerPrincipal)) {
+      return &e;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace
+
+/* static */ void ClipboardGuard::RememberReadback(
+    nsIClipboard::ClipboardType aWhichClipboard, WindowContext* aWriterWindowContext,
+    nsITransferable* aOwnText) {
+  uint64_t topBc = 0;
+  nsCOMPtr<nsIPrincipal> principal;
+  if (!WriterIdentity(aWriterWindowContext, topBc, principal) || !aOwnText) {
+    return;
+  }
+  ForgetReadback(aWhichClipboard);
+  ReadbackEntry entry;
+  entry.mType = aWhichClipboard;
+  entry.mTopBrowsingContextId = topBc;
+  entry.mPrincipal = principal;
+  entry.mOwnText = aOwnText;
+  entry.mExpiry =
+      mozilla::TimeStamp::Now() + mozilla::TimeDuration::FromMilliseconds(kClipguardHoldMs);
+  Readback().AppendElement(std::move(entry));
+}
+
+/* static */ void ClipboardGuard::ForgetReadback(
+    nsIClipboard::ClipboardType aWhichClipboard) {
+  if (!sReadback) {
+    return;
+  }
+  sReadback->RemoveElementsBy(
+      [&](const ReadbackEntry& e) { return e.mType == aWhichClipboard; });
+}
+
+/* static */ bool ClipboardGuard::FillReadbackIfSameOrigin(
+    nsIClipboard::ClipboardType aWhichClipboard,
+    WindowContext* aReaderWindowContext, nsIPrincipal* aReaderPrincipal,
+    nsITransferable* aReaderTransferable) {
+  ReadbackEntry* e =
+      MatchReadback(aWhichClipboard, aReaderWindowContext, aReaderPrincipal);
+  if (!e || !aReaderTransferable) {
+    return false;
+  }
+  CopyTextFlavors(e->mOwnText, aReaderTransferable);
+  return true;
+}
+
+/* static */ already_AddRefed<nsITransferable>
+ClipboardGuard::TakeReadbackTransferable(nsIClipboard::ClipboardType aWhichClipboard,
+                                         WindowContext* aReaderWindowContext,
+                                         nsIPrincipal* aReaderPrincipal) {
+  ReadbackEntry* e =
+      MatchReadback(aWhichClipboard, aReaderWindowContext, aReaderPrincipal);
+  if (!e) {
+    return nullptr;
+  }
+  nsCOMPtr<nsITransferable> copy =
+      CloneTextTransferable(e->mOwnText, e->mPrincipal);
+  return copy.forget();
+}
 
 // Fills a ClipguardContext from the prefs and the source, then asks the crate.
 static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aVerdict,
@@ -179,12 +340,21 @@ static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aV
     return Result::NotGuarded;  // not a command
   }
 
-  // v1: a page "copy" handler that replaced the selection is treated as a script write;
-  // the visibility check still lets it through when the copied command is on screen (an
-  // ordinary copy button that reformats the selection). Comparing the selection's own
-  // danger level (clipguard_is_substitution) to spare an admin who copied a real install
-  // command through such a button is left for v1.1, when the selection text is carried.
-  const bool substituted = (source == ClipguardSource::PageReplacedCopy);
+  // A page "copy" handler that replaced the person's selection (P2). It counts as a
+  // substitution -- and so is treated like a script write -- only when the replacement is
+  // more dangerous than what the person selected (clipguard_is_substitution). A handler
+  // that tidies the selection, or appends something harmless like "Read more at <url>",
+  // does not, so an ordinary copy button is left alone. With no selection text to compare
+  // (unusual for P2), err toward treating it as a substitution.
+  bool substituted = (source == ClipguardSource::PageReplacedCopy);
+  if (substituted) {
+    nsAutoString selection;
+    aTransferable->GetWhisperSelection(selection);
+    if (!selection.IsEmpty()) {
+      substituted =
+          clipguard::clipguard_is_substitution(&selection, &text, verdict.level);
+    }
+  }
 
   // "Always allow commands from this site" (this session) is a session permission the
   // doorhanger adds for the writing origin (WhisperClipguard.sys.mjs). Check it here.
@@ -210,6 +380,15 @@ static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aV
 
     case ClipguardAction::CheckVisibility:
     case ClipguardAction::Block: {
+      // Copy the page's own text, as written, before the trailing break is cut, so that
+      // same-origin read-back can return exactly what the page wrote. It is registered
+      // only after the placeholder write below, which clears nothing (that write passes
+      // aCheckContentAnalysis = false, so SetDataImpl does not forget read-back for it).
+      RefPtr<WindowGlobalParent> wgp = aWindowContext->Canonical();
+      nsCOMPtr<nsIPrincipal> writer = wgp ? wgp->DocumentPrincipal() : nullptr;
+      nsCOMPtr<nsITransferable> ownText =
+          writer ? CloneTextTransferable(aTransferable, writer) : nullptr;
+
       // Put a harmless placeholder on the clipboard now, so nothing dangerous is ever
       // there, and hold the real text. The page's write "succeeds" at once: run its
       // completion with NS_OK and commit the placeholder with no completion.
@@ -226,6 +405,9 @@ static clipguard::ClipguardDecision Decide(const clipguard::ClipguardVerdict& aV
       if (nsCOMPtr<nsITransferable> placeholder = MakePlaceholderTransferable()) {
         aClipboard->SetDataImpl(placeholder, nullptr, aWhichClipboard, nullptr,
                                 /* aCheckContentAnalysis */ false);
+      }
+      if (ownText) {
+        RememberReadback(aWhichClipboard, aWindowContext, ownText);
       }
 
       nsBaseClipboard::SetDataCompletion completion = std::move(aCompletion);

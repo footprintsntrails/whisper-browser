@@ -80,11 +80,15 @@ class Server:
 
 # Read the real system clipboard in the parent process, as text.
 READ_CLIPBOARD_JS = r"""
+// The real OS clipboard, read from chrome with the chrome window's own context. That
+// context is not the blocked page (different browsing context, system principal), so the
+// read-back override never applies here: this is what every other reader and the OS see.
 const clip = Cc["@mozilla.org/widget/clipboard;1"].getService(Ci.nsIClipboard);
 const trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
 trans.init(null);
 trans.addDataFlavor("text/plain");
-clip.getData(trans, Ci.nsIClipboard.kGlobalClipboard, window?.browsingContext ?? null);
+const wc = window.browsingContext?.currentWindowContext ?? null;
+clip.getData(trans, Ci.nsIClipboard.kGlobalClipboard, wc);
 let str = {};
 try {
   trans.getTransferData("text/plain", str);
@@ -144,19 +148,28 @@ def click_element(m, selector):
     }]})
 
 
-def press_ctrl_c(m):
-    """A trusted Ctrl+C through the Actions key source, so the copy event is a user copy."""
+def _chord(m, letter):
     CTRL = ""
     m.command("WebDriver:PerformActions", {"actions": [{
         "type": "key", "id": "keyboard",
         "actions": [
             {"type": "keyDown", "value": CTRL},
-            {"type": "keyDown", "value": "c"},
+            {"type": "keyDown", "value": letter},
             {"type": "pause", "duration": 20},
-            {"type": "keyUp", "value": "c"},
+            {"type": "keyUp", "value": letter},
             {"type": "keyUp", "value": CTRL},
         ],
     }]})
+
+
+def press_ctrl_c(m):
+    """A trusted Ctrl+C through the Actions key source, so the copy event is a user copy."""
+    _chord(m, "c")
+
+
+def press_ctrl_v(m):
+    """A trusted Ctrl+V, so the page reads the clipboard the way a person's paste does."""
+    _chord(m, "v")
 
 
 class Report:
@@ -193,6 +206,11 @@ def run_scenario(m, report, scenario, origin, iframe_origin, malicious):
         # Ctrl+C (the content document has focus after Navigate). The copy-handler page
         # installs its handler before this; a plain selection copies itself.
         press_ctrl_c(m)
+    elif scenario["trigger"] == "ctrlv":
+        # The page writes on the click, then the person pastes it back with Ctrl+V.
+        click_element(m, "#go")
+        time.sleep(0.3)
+        press_ctrl_v(m)
     else:
         click_element(m, "#go")
 
@@ -227,10 +245,14 @@ def run_scenario(m, report, scenario, origin, iframe_origin, malicious):
         want = scenario["command"].rstrip("\n")
         report.check(f"{name}: the clipboard holds the real command (not blocked)",
                      clip.rstrip("\n") == want, clip[:120])
-    if scenario.get("expectReadNotCommand"):
-        read = (result or {}).get("read")
-        report.check(f"{name}: the page could not read its own command back",
-                     read is None or scenario["command"] not in (read or ""), read)
+    if scenario.get("expectPageRead") == "command":
+        # The page that was blocked reads back its OWN text (not the placeholder), so it
+        # cannot tell it was blocked -- while the OS clipboard (checked above) holds the
+        # placeholder for every other reader.
+        read = (result or {}).get("read") or ""
+        want = scenario["command"]
+        report.check(f"{name}: the page reads its own text back (not the placeholder)",
+                     want in read and PLACEHOLDER not in read, read[:120])
     del origin, iframe_origin, malicious
 
 

