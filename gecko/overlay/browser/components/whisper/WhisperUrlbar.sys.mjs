@@ -120,9 +120,10 @@ export const WhisperUrlbar = {
     for (const button of panel.querySelectorAll(
       ".search-panel-one-offs .searchbar-engine-one-off-item"
     )) {
-      // "DuckDuckGo (@duckduckgo)" -> "DuckDuckGo"
+      // "DuckDuckGo (@duckduckgo)" -> "DuckDuckGo",
+      // "Wikipedia (en) (@wikipedia)" -> "Wikipedia"
       const name = (button.getAttribute("tooltiptext") ?? "").replace(
-        /\s*\([^)]*\)\s*$/,
+        /(\s*\([^)]*\))+\s*$/,
         ""
       );
       if (name && button.getAttribute("data-whisper-name") != name) {

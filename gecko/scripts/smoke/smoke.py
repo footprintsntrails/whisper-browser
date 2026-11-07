@@ -363,6 +363,41 @@ return {
 };
 """
 
+TAB_ICONS_JS = r"""
+// Tab rows and icons in the sidebar (cast.css, WhisperTabIcons.sys.mjs): rows 30 px
+// tall and a few pixels apart, a monogram for a page without an icon (a tab that is
+// not loaded, so nothing is looked up), Firefox's globe for an address without a
+// domain, and a ring while a page loads, never a dot.
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const { monogramFor } = ChromeUtils.importESModule("moz-src:///browser/components/whisper/WhisperTabIcons.sys.mjs");
+const lazyTab = gBrowser.addTrustedTab("https://en.wikipedia.org/wiki/Web_browser", { createLazyBrowser: true });
+const ipTab = gBrowser.addTrustedTab("http://192.0.2.1/", { createLazyBrowser: true });
+await sleep(800);
+const rows = gBrowser.visibleTabs.filter(t => !t.pinned).map(t => t.querySelector(".tab-background").getBoundingClientRect());
+const pitches = rows.slice(1).map((r, i) => Math.round(r.top - rows[i].top));
+const stack = lazyTab.querySelector(".tab-icon-stack");
+const mono = getComputedStyle(stack, "::before");
+const out = {
+  rowHeights: [...new Set(gBrowser.visibleTabs.filter(t => !t.pinned).map(t => Math.round(t.querySelector(".tab-background").getBoundingClientRect().height)))],
+  pitches: [...new Set(pitches)],
+  monogram: lazyTab.getAttribute("whisper-mono"),
+  monogramContent: mono.content,
+  monogramSize: [mono.width, mono.height],
+  iconHidden: getComputedStyle(lazyTab.querySelector(".tab-icon-image")).visibility == "hidden",
+  ipMonogram: ipTab.getAttribute("whisper-mono"),
+  ipIcon: getComputedStyle(ipTab.querySelector(".tab-icon-image")).content,
+  helper: [monogramFor("https://news.ycombinator.com/"), monogramFor("http://127.0.0.1:8080/"), monogramFor("about:blank")],
+};
+lazyTab.setAttribute("busy", "true");
+await sleep(200);
+const ring = getComputedStyle(lazyTab.querySelector(".tab-throbber"), "::before");
+out.loading = { background: ring.backgroundImage, radius: ring.borderTopLeftRadius, animation: ring.animationName };
+lazyTab.removeAttribute("busy");
+gBrowser.removeTab(lazyTab);
+gBrowser.removeTab(ipTab);
+return out;
+"""
+
 SEARCH_JS = r"""
 // The search engines and their addresses as Whisper builds them (patches/0033, 0036).
 const { SearchService } = ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs");
@@ -809,6 +844,19 @@ def main():
                      "passwords, settings) and no second settings gear",
                      bar["buttons"] == ["downloads", "bookmarks", "history", "passwords", "settings"]
                      and bar["shown"] and not bar["firefoxGearShown"], bar)
+        icons = m.run(TAB_ICONS_JS)
+        report.facts["tab_icons"] = icons
+        report.check("sidebar tab rows are 30 px tall and 2 to 4 px apart",
+                     icons["rowHeights"] == [30] and all(32 <= p <= 34 for p in icons["pitches"]), icons)
+        report.check("a page without an icon shows its domain's monogram (W for wikipedia.org); "
+                     "an IP address keeps Firefox's globe",
+                     icons["monogram"] == "W" and icons["monogramContent"] == '"W"' and icons["iconHidden"]
+                     and icons["ipMonogram"] is None and "defaultFavicon" in (icons["ipIcon"] or "")
+                     and icons["helper"][0]["letter"] == "Y" and icons["helper"][1] is None
+                     and icons["helper"][2] is None, icons)
+        report.check("a loading tab shows a ring, not Firefox's sliding dot",
+                     icons["loading"]["background"] == "none" and icons["loading"]["radius"] == "50%"
+                     and icons["loading"]["animation"] == "whisper-tab-loading", icons["loading"])
         report.check("Ctrl+Alt+S shortcut is registered",
                      r["shortcutKey"] == {"key": "S", "modifiers": "accel,alt"}, r["shortcutKey"])
 

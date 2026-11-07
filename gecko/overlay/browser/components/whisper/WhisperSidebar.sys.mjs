@@ -380,15 +380,27 @@ export const WhisperSidebar = {
     main.append(bar);
 
     // Firefox's own buttons for the same panels and its "Customize sidebar" gear live
-    // in sidebar-main's shadow tree; a stylesheet adopted there hides them.
+    // in sidebar-main's shadow tree; a stylesheet adopted there hides them. Their row
+    // is then empty unless an extension adds a sidebar tool: it takes no room (no
+    // blank band under the bar) and its divider is not drawn. The divider (a
+    // splitter) itself stays in place: Firefox measures the row with it.
     const root = main.shadowRoot;
     if (root) {
       const sheet = new win.CSSStyleSheet();
+      const ours = `[view="viewBookmarksSidebar"], [view="viewHistorySidebar"],
+          [view="viewCPMSidebar"], [view="viewCustomizeSidebar"]`;
       sheet.replaceSync(`
-        moz-button:is([view="viewBookmarksSidebar"], [view="viewHistorySidebar"],
-          [view="viewCPMSidebar"], [view="viewCustomizeSidebar"]),
+        moz-button:is(${ours}),
         .overflow-button {
           display: none !important;
+        }
+        .buttons-wrapper:not(:has(.tools-and-extensions:not(.overflow-button)
+            > moz-button:not(${ours}))) {
+          min-height: 0 !important;
+          padding-block: 0 !important;
+        }
+        #sidebar-tools-and-extensions-splitter {
+          background-image: none !important;
         }`);
       root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
     }

@@ -198,3 +198,6 @@ pref("browser.tabs.inTitlebar", 1);
 // slides in from the left edge) or "expanded" (names and icons, larger tabs).
 // Switch with Ctrl+Alt+S or from the sidebar's right-click menu.
 pref("whisper.sidebar.mode", "expanded");
+// A page without an icon shows a monogram (the first letter of its domain on a tile
+// in a colour of its own) instead of Firefox's globe (WhisperTabIcons.sys.mjs).
+pref("whisper.tabs.monograms", true);

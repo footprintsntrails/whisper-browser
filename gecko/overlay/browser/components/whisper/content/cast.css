@@ -132,6 +132,10 @@
 .tabbrowser-tab:not([selected], [visuallyselected]):hover .tab-background {
   background: color-mix(in srgb, var(--w-text) 6%, transparent) !important;
 }
+/* Close buttons only under the pointer or on the selected tab, in both layouts */
+.tabbrowser-tab:not(:hover, [selected], [visuallyselected], [pinned]) .tab-close-button {
+  visibility: hidden;
+}
 .tab-label { font-weight: 500 !important; }
 .tabbrowser-tab:not([selected], [visuallyselected]) .tab-label { color: color-mix(in srgb, var(--w-text) 82%, transparent); }
 
@@ -162,6 +166,12 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   }
 
   #tabbrowser-tabs[orient="vertical"] {
+    /* Rows 30 px tall and 3 px apart (Firefox spaces them 13 px). The group header
+     * and the "New tab" row use the same variables, so the rhythm holds. */
+    --tab-margin-block: 0px !important;
+    --tab-padding-block-start: 2px !important;
+    --tab-padding-block-end: 1px !important;
+
     .tab-icon-image,
     .tab-icon-pending,
     .tab-throbber,
@@ -169,6 +179,18 @@ menupopup, panel { --panel-border-radius: 10px !important; }
       width: var(--w-tab-icon) !important;
       height: var(--w-tab-icon) !important;
     }
+  }
+
+  /* One icon column: tabs in a group are not indented (Firefox indents them 8 px);
+   * a thin rail in the group's colour, in the gutter left of the tabs, says which
+   * tabs belong to the open group. */
+  #tabbrowser-tabs[orient="vertical"][expanded] tab-group > :is(.tab-group-label-container, .tabbrowser-tab) {
+    margin-inline-start: 0 !important;
+  }
+  #tabbrowser-tabs[orient="vertical"] tab-group:not([collapsed]) > .tabbrowser-tab,
+  #tabbrowser-tabs[orient="vertical"] tab-group[collapsed] > .tabbrowser-tab:is([selected], [visuallyselected]) {
+    background: linear-gradient(color-mix(in srgb, var(--tab-group-line-color) 70%, transparent))
+      no-repeat 3px 0 / 2px 100%;
   }
 
   #tabbrowser-tabs[orient="vertical"][expanded] .tab-label {
@@ -206,6 +228,62 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   }
 }
 
+/* ===== Tab icons (WhisperTabIcons.sys.mjs) ============================================
+ * A page without an icon shows a monogram where Firefox shows its globe: the first
+ * letter of the site's domain on a 16 px tile in a muted colour of its own (the tab
+ * carries the letter and the hue). While a page loads, a thin ring turns in the same
+ * place instead of Firefox's sliding dot, in both layouts.
+ */
+.tabbrowser-tab[whisper-mono]:not([image], [busy], [crashed], [sharing], [pictureinpicture]) {
+  .tab-icon-image {
+    visibility: hidden !important;
+  }
+
+  /* Firefox hides an icon-less tab's icon in the horizontal strip; the tile takes its
+   * place and its spacing. */
+  #tabbrowser-tabs[orient="horizontal"] &:not([pinned]) .tab-icon-stack::before {
+    margin-inline-end: var(--tab-icon-margin-inline-end);
+  }
+
+  .tab-icon-stack::before {
+    content: var(--whisper-mono);
+    grid-area: 1 / 1;
+    justify-self: start;
+    align-self: center;
+    inline-size: var(--w-tab-icon);
+    block-size: var(--w-tab-icon);
+    border-radius: 4px;
+    background-color: oklch(40% 0.045 var(--whisper-mono-hue));
+    color: #e6eaee;
+    font: 500 10px/var(--w-tab-icon) "Whisper Inter", sans-serif;
+    text-align: center;
+    pointer-events: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[sessionrestored] .tab-throbber[busy]::before {
+    inset: 1.5px !important;
+    inline-size: auto !important;
+    block-size: auto !important;
+    box-sizing: border-box;
+    background: none !important;
+    border: 1.5px solid color-mix(in srgb, currentColor 22%, transparent);
+    border-block-start-color: currentColor;
+    border-radius: 50%;
+    opacity: 0.55 !important;
+    animation: whisper-tab-loading 0.8s linear infinite !important;
+  }
+  :root[sessionrestored] .tab-throbber[busy][progress]::before {
+    opacity: 0.9 !important;
+  }
+}
+@keyframes whisper-tab-loading {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 /* ===== Toolbar (WhisperToolbar.sys.mjs) ===============================================
  * One slim row; whisper.toolbar.style "compact" is Firefox's compact density (a 28 px
  * address bar), "standard" its normal one. The sidebar button stays placed (Firefox
@@ -224,38 +302,63 @@ menupopup, panel { --panel-border-radius: 10px !important; }
  */
 @media -moz-pref("sidebar.verticalTabs") {
   #tabbrowser-tabs[orient="vertical"] {
-    .tabbrowser-tab:not(:hover, [selected], [visuallyselected]) .tab-close-button {
-      visibility: hidden;
-    }
-
+    /* The group header: a row like a tab, the colour chip in the icon column, the
+     * name a step below a tab's title, the number of tabs at the end. */
     .tab-group-label {
       background: transparent !important;
-      color: var(--w-muted) !important;
+      color: color-mix(in srgb, var(--w-text) 80%, transparent) !important;
       font-size: 12px !important;
       font-weight: 600 !important;
       text-transform: none !important;
-      border-radius: 6px !important;
-      padding-inline: 6px !important;
+      border-radius: 8px !important;
       outline: none !important;
-      min-height: 26px !important;
+      min-height: var(--w-tab-height) !important;
       display: flex !important;
       align-items: center;
-      gap: 8px;
+      gap: 0;
 
       &::before {
         content: "";
         inline-size: 8px;
         block-size: 8px;
-        border-radius: 3px;
+        border-radius: 2.5px;
         background: var(--tab-group-color);
         flex: none;
       }
+    }
+    /* In the expanded sidebar the header spans the row like a tab, its chip centred
+     * in the icon column (9 px gutter + 11 px + 8 px chip), its name where the tabs'
+     * titles start. */
+    &[expanded] {
+      /* The rows after an open group's header follow at the tabs' pitch */
+      tab-group:not([collapsed]) > .tab-group-label-container {
+        padding-block-end: 1px !important;
+      }
 
+      .tab-group-label-hover-highlight {
+        margin-inline: 0 !important;
+        padding-inline: 0 !important;
+        background: transparent !important;
+      }
+
+      .tab-group-label {
+        max-inline-size: none !important;
+        align-self: stretch;
+        margin-inline: var(--tab-margin-inline-inner) !important;
+        padding-inline: 0 10px !important;
+
+        &::before {
+          margin-inline: 11px 12px;
+        }
+      }
+    }
+    .tab-group-label {
       &::after {
         content: attr(data-whisper-count);
         margin-inline-start: auto;
         font-weight: 500;
-        color: color-mix(in srgb, var(--w-muted) 80%, transparent);
+        font-variant-numeric: tabular-nums;
+        color: var(--w-muted);
       }
 
       &:hover {
@@ -267,11 +370,25 @@ menupopup, panel { --panel-border-radius: 10px !important; }
     tab-group {
       --tab-group-line-thickness: 0px;
     }
+
+    /* A tab whose title changed in the background: its name brightens instead of
+     * Firefox's dot beside the icon. The narrow sidebar has no names and keeps a
+     * mark, in the focus colour. */
+    --tab-attention-dot-color: var(--w-focus);
+    &[expanded] .tabbrowser-tab > .tab-stack > .tab-content:is([titlechanged], [attention]):not([selected]) {
+      background-image: none !important;
+
+      .tab-label {
+        color: var(--w-text) !important;
+        font-weight: 600 !important;
+      }
+    }
   }
 
   :is(#vertical-tabs-newtab-button, #tabs-newtab-button) {
     color: var(--w-muted) !important;
     --tab-min-height: var(--w-tab-height);
+    margin-block-start: 3px !important;
 
     &:hover {
       color: var(--w-text) !important;
@@ -279,11 +396,42 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   }
 }
 
+/* Tab groups in the horizontal tab strip: the same quiet header as in the sidebar
+ * (colour chip and name) instead of Firefox's filled pill. */
+#tabbrowser-tabs[orient="horizontal"] .tab-group-label {
+  background: transparent !important;
+  color: color-mix(in srgb, var(--w-text) 80%, transparent) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  outline: none !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 8px !important;
+
+  &::before {
+    content: "";
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: 2.5px;
+    background: var(--tab-group-color);
+    flex: none;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--w-text) 6%, transparent) !important;
+    color: var(--w-text) !important;
+  }
+}
+
 #whisper-sidebar-bar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 6px 8px;
+  /* The first button's icon sits in the tabs' icon column: the tabs' 9 px gutter,
+   * then a 30 px button around a 16 px icon, as a tab row around its icon. */
+  padding: 6px var(--tab-margin-inline-inner, 9px);
   border-top: 1px solid color-mix(in srgb, var(--w-text) 7%, transparent);
 
   /* The compact sidebar: one column of icons */
@@ -332,7 +480,7 @@ menupopup, panel { --panel-border-radius: 10px !important; }
  * row; the search engines as chips at the bottom.
  */
 #urlbar {
-  --urlbarview-background-color-hover: color-mix(in srgb, var(--w-text) 5%, transparent) !important;
+  --urlbarview-background-color-hover: color-mix(in srgb, var(--w-text) 6%, transparent) !important;
   --urlbarview-background-color-selected: color-mix(in srgb, var(--w-text) 12%, transparent) !important;
   --urlbarview-text-color-selected: #ffffff !important;
   --urlbarview-text-color-secondary: var(--w-muted) !important;
@@ -346,8 +494,9 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   padding: 8px !important;
   background: var(--w-surface) !important;
   border: 1px solid var(--w-line);
-  border-radius: 14px;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  /* Concentric with the 8 px rows inside 8 px of padding */
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.4);
 }
 
 
@@ -393,13 +542,27 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   }
 }
 
-/* The action only on the selected row */
-.urlbarView-row:not([selected]) :is(.urlbarView-action, .urlbarView-title-separator, .urlbarView-row-buttons) {
+/* The action only on the selected row, at its end; no "•" between title and action */
+.urlbarView-title-separator {
+  display: none !important;
+}
+.urlbarView-row:not([selected]) :is(.urlbarView-action, .urlbarView-row-buttons) {
   display: none !important;
 }
 .urlbarView-row[selected] .urlbarView-action {
-  margin-inline-start: auto;
+  margin-inline-start: 12px;
   color: var(--w-muted) !important;
+}
+
+/* Icons in the palette: the badges on open-tab, history and bookmark rows and the
+ * bookmarks star are grey, not Firefox's link blue and attention violet. */
+.urlbarView-row:not([selected]) .urlbarView-type-icon {
+  fill: var(--w-muted) !important;
+}
+.urlbarView-row[source="bookmarks"] > .urlbarView-row-inner > .urlbarView-favicon,
+#urlbar-engine-one-off-item-bookmarks {
+  fill: currentColor !important;
+  fill-opacity: var(--urlbar-icon-fill-opacity) !important;
 }
 
 /* Search engines as chips */
@@ -423,7 +586,7 @@ menupopup, panel { --panel-border-radius: 10px !important; }
   block-size: 28px !important;
   padding-inline: 8px 10px !important;
   margin-inline-end: 4px !important;
-  border-radius: 14px !important;
+  border-radius: 8px !important;
   background: color-mix(in srgb, var(--w-text) 6%, transparent) !important;
   color: var(--w-text) !important;
 
@@ -433,7 +596,22 @@ menupopup, panel { --panel-border-radius: 10px !important; }
     margin-inline-start: 6px;
   }
 
-  &:is(:hover, [selected]) {
-    background: color-mix(in srgb, var(--w-text) 14%, transparent) !important;
+  &:hover {
+    background: color-mix(in srgb, var(--w-text) 10%, transparent) !important;
   }
+  &[selected] {
+    background: color-mix(in srgb, var(--w-text) 12%, transparent) !important;
+    color: #ffffff !important;
+  }
+}
+/* Bookmarks, open tabs and history: icon-only chips after the engines */
+#urlbar .search-panel-one-offs .searchbar-engine-one-off-item:is(#urlbar-engine-one-off-item-bookmarks, #urlbar-engine-one-off-item-tabs, #urlbar-engine-one-off-item-history, #urlbar-engine-one-off-item-actions) {
+  padding-inline: 6px !important;
+
+  .button-text {
+    display: none !important;
+  }
+}
+#urlbar-engine-one-off-item-bookmarks {
+  margin-inline-start: 6px !important;
 }
