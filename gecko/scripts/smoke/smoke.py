@@ -364,7 +364,7 @@ return {
 """
 
 SEARCH_JS = r"""
-// The search engines' addresses as Whisper builds them (patches/0033).
+// The search engines and their addresses as Whisper builds them (patches/0033, 0036).
 const { SearchService } = ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs");
 await SearchService.init();
 const submission = id => SearchService.getEngineById(id)?.getSubmission("whisper test")?.uri.spec ?? null;
@@ -832,6 +832,12 @@ def main():
                      all(search.get(e) and "whisper" in search[e] and not codes.search(search[e].split("?", 1)[1])
                          for e in ("ddg", "google", "bing")),
                      {e: search.get(e) for e in ("ddg", "google", "bing")})
+        engines = search.get("engines") or []
+        report.check("built-in search engines are DuckDuckGo (the default), Google, Bing and Wikipedia",
+                     search.get("appDefaultEngine") == "ddg" and search.get("defaultEngine") == "ddg"
+                     and engines[:3] == ["ddg", "google", "bing"] and len(engines) == 4
+                     and engines[3].startswith("wikipedia"),
+                     {k: search.get(k) for k in ("defaultEngine", "appDefaultEngine", "engines")})
         typing = m.run(TYPING_JS)
         report.facts["typing"] = typing
         # Background work (uBlock Origin's lists, Remote Settings) may run meanwhile; what

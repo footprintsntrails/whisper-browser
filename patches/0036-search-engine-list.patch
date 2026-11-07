@@ -1,0 +1,58 @@
+Whisper: the built-in search engines are DuckDuckGo, Google, Bing and Wikipedia
+
+What: SearchEngineSelector.fetchEngineConfiguration() keeps only DuckDuckGo, Google,
+Bing and Wikipedia (the user's language edition) of the configured engines, in that
+order, and makes DuckDuckGo the default in normal and private windows.
+Why: Whisper's default search is DuckDuckGo. The rest of Firefox's list is AI answer
+engines (Perplexity) and shopping or partner-only engines (eBay, Amazon, ...) that
+Whisper does not offer. Engines the user adds stay. Like the partner codes
+(0033-search-no-partner-codes.patch), this runs on the packaged configuration and on
+every Remote Settings update alike.
+---
+--- a/toolkit/components/search/SearchEngineSelector.sys.mjs
++++ b/toolkit/components/search/SearchEngineSelector.sys.mjs
+@@ -79,6 +79,19 @@
+   }
+ }
+ 
++/**
++ * Whisper: the built-in engines Whisper offers, in this order, and the default
++ * (patches/0036-search-engine-list.patch). No AI answer engines and no shopping or
++ * partner-only engines; the user's own engines (OpenSearch, "Add search engine")
++ * are not part of the configuration and stay as the user added them.
++ */
++const WHISPER_ENGINES = [/^ddg$/, /^google$/, /^bing$/, /^wikipedia(-.+)?$/];
++const WHISPER_DEFAULT_ENGINE = "ddg";
++
++function whisperRank(engine) {
++  return WHISPER_ENGINES.findIndex(re => re.test(engine.identifier));
++}
++
+ export class SearchEngineSelector {
+   /**
+    * @param {() => void} listener
+@@ -285,6 +298,24 @@
+       whisperRemoveCodes(engine);
+     }
+ 
++    // Whisper: DuckDuckGo first and the default, then Google, Bing and Wikipedia;
++    // no other built-in engine (patches/0036-search-engine-list.patch).
++    // The search service lists engines by orderHint, highest first.
++    refinedSearchConfig.engines = refinedSearchConfig.engines
++      .filter(e => whisperRank(e) >= 0)
++      .sort((a, b) => whisperRank(a) - whisperRank(b));
++    for (let engine of refinedSearchConfig.engines) {
++      engine.orderHint = 1000 - 100 * whisperRank(engine);
++    }
++    if (
++      refinedSearchConfig.engines.some(
++        e => e.identifier == WHISPER_DEFAULT_ENGINE
++      )
++    ) {
++      refinedSearchConfig.appDefaultEngineId = WHISPER_DEFAULT_ENGINE;
++      refinedSearchConfig.appPrivateDefaultEngineId = WHISPER_DEFAULT_ENGINE;
++    }
++
+     if (
+       !refinedSearchConfig.appDefaultEngineId ||
+       !refinedSearchConfig.engines.find(
