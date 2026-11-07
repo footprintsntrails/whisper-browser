@@ -217,3 +217,10 @@ pref("whisper.sidebar.mode", "expanded");
 // A page without an icon shows a monogram (the first letter of its domain on a tile
 // in a colour of its own) instead of Firefox's globe (WhisperTabIcons.sys.mjs).
 pref("whisper.tabs.monograms", true);
+
+// --- Settings (WhisperSettings.sys.mjs): Whisper's pane, Mozilla's offers out --------
+// Firefox Relay (Mozilla's email masks) is not offered when you save a password.
+pref("signon.firefoxRelay.feature", "disabled");
+// Websites are asked for English whatever the interface language, so the interface
+// language does not set a Whisper user apart.
+pref("intl.accept_languages", "en-US, en");

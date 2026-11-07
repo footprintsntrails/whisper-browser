@@ -1,0 +1,95 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Settings (about:preferences) in the Cast look: Cast black, platinum text, graphite
+ * boxes, the focus pastel for the accent, Inter. Only Firefox's design tokens change,
+ * so every pane, Whisper's and Firefox's, follows. Loaded by WhisperSettings.sys.mjs. */
+
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Whisper Inter"; src: url("chrome://whisper/content/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; }
+
+@media not (prefers-contrast) {
+  :root {
+    color-scheme: dark;
+    --background-color-canvas: #111316;
+    --background-color-box: #1b1f23;
+    --background-color-box-info: #23282d;
+    --border-color: #2a2f35;
+    --card-border-color: #2a2f35;
+    --input-border-color: #2a2f35;
+    --text-color: #d3d9df;
+    --text-color-deemphasized: #8e98a3;
+    --color-accent-primary: #a7c7e7;
+    --color-accent-primary-hover: #bcd5ee;
+    --color-accent-primary-active: #cfe1f3;
+    --focus-outline-color: #a7c7e7;
+    --button-background-color-primary: #d3d9df;
+    --button-text-color-primary: #111316;
+    --border-radius-medium: 8px;
+    --border-radius-large: 10px;
+    /* Rows that open something (box buttons and links), and plain buttons: graphite
+     * steps instead of Firefox's tinted hover */
+    --button-background-color-menu-hover: #23282d;
+    --button-background-color-menu-active: #2b3137;
+    --button-text-color-menu-hover: #eef1f4;
+    --button-text-color-menu-active: #eef1f4;
+    --button-background-color: #23282d;
+    --button-background-color-hover: #2b3137;
+    --button-background-color-active: #323940;
+    --button-background-color-primary-hover: #eef1f4;
+    --button-background-color-primary-active: #ffffff;
+    background-color: #111316;
+  }
+}
+
+/* Mozilla's offers and services in Firefox's panes: the Mozilla VPN link, Firefox
+ * Relay email masks, suggestions from Mozilla's server (off in Whisper) and the
+ * settings of Firefox's new tab page ("Firefox Home" content and its customization),
+ * which Whisper does not use. */
+setting-group[groupid="home"],
+#setting-control-ipProtectionLinks,
+#setting-control-relayIntegration,
+#setting-control-firefoxSuggestOnlineEnabledToggle,
+#setting-control-firefoxSuggestSponsored,
+#setting-control-related-settings-home-link {
+  display: none !important;
+}
+
+/* Groups other features add (clipboard protection, the security features) leave no
+ * gap while their part is not in the build. */
+setting-pane[data-category="paneWhisper"] setting-group:empty {
+  display: none;
+}
+
+/* A button beside a row's text keeps its label on one line. */
+setting-pane[data-category="paneWhisper"] moz-button[slot="actions"] {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+:root,
+body {
+  font-family: "Whisper Inter", system-ui, sans-serif;
+}
+
+/* Navigation: quiet rows, a graphite pill for the open pane (as the tab sidebar's
+ * selected tab), not Firefox's filled accent pill. */
+moz-page-nav,
+moz-page-nav-button {
+  --page-nav-button-background-color: transparent;
+  --page-nav-button-background-color-hover: #1b1f23;
+  --page-nav-button-background-color-active: #23282d;
+  --page-nav-button-background-color-selected: #2b3137;
+  --page-nav-button-text-color-selected: #ffffff;
+  --page-nav-button-border-radius: 8px;
+  --page-nav-button-border-radius-focused: 8px;
+}
+
+/* Whisper's own entry leads the navigation, set apart from Firefox's by a line. */
+#category-whisper {
+  margin-block-end: 6px;
+  padding-block-end: 6px;
+  border-block-end: 1px solid var(--border-color);
+}

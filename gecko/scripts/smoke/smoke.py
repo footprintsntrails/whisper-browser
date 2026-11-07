@@ -559,6 +559,80 @@ gBrowser.removeTab(gBrowser.selectedTab);
 return out;
 """
 
+SETTINGS_JS = r"""
+// Settings (WhisperSettings.sys.mjs, content/settings/): about:preferences opens on
+// Whisper's pane, first in the navigation, with its groups; Mozilla's help link and
+// the About Firefox, Account and sync and Labs entries are out of the navigation; the
+// pane's switches show their prefs.
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const tab = gBrowser.addTrustedTab("about:preferences");
+gBrowser.selectedTab = tab;
+let doc = null;
+for (let i = 0; i < 40; i++) {
+  await sleep(250);
+  doc = tab.linkedBrowser.contentDocument;
+  if (doc?.querySelector('setting-pane[data-category="paneWhisper"] setting-group moz-fieldset')) {
+    break;
+  }
+}
+await sleep(1000);
+const shown = e => !!e && e.getBoundingClientRect().height > 0;
+const pane = doc?.querySelector('setting-pane[data-category="paneWhisper"]');
+const control = (id, tag) => pane?.querySelector(`#setting-control-${id} ${tag}`);
+const out = {
+  hash: doc?.location.hash ?? null,
+  paneShown: shown(pane),
+  nav: [...(doc?.querySelectorAll("#categories > moz-page-nav-button") ?? [])].filter(shown).map(e => e.getAttribute("view") || e.id),
+  groups: [...(pane?.querySelectorAll("setting-group") ?? [])].filter(shown).map(g => g.getAttribute("groupid")),
+  helpButton: !!doc?.getElementById("helpButton"),
+  suggestions: control("suggestionsInSearchFieldsCheckbox", "moz-toggle")?.pressed ?? null,
+  suggestPref: Services.prefs.getBoolPref("browser.search.suggest.enabled"),
+  dnsStrict: control("whisperDnsStrict", "moz-toggle")?.pressed ?? null,
+  trrMode: Services.prefs.getIntPref("network.trr.mode"),
+  text: pane?.innerText?.slice(0, 4000) ?? "",
+};
+gBrowser.removeTab(tab);
+return out;
+"""
+
+SETTINGS_TEXT_JS = r"""
+// Every pane in Settings' navigation: the visible texts that name Firefox or Mozilla.
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const tab = gBrowser.addTrustedTab("about:preferences");
+gBrowser.selectedTab = tab;
+await sleep(3000);
+const win = tab.linkedBrowser.contentWindow;
+const doc = win.document;
+const panes = [...doc.querySelectorAll("#categories > moz-page-nav-button[view]")]
+  .filter(b => b.checkVisibility()).map(b => b.getAttribute("view"));
+const found = {};
+for (const pane of panes) {
+  win.gotoPref(pane);
+  await sleep(1500);
+  const texts = new Set();
+  const visit = root => {
+    for (const el of root.querySelectorAll("*")) {
+      if (!el.checkVisibility()) continue;
+      for (const a of ["label", "description", "heading", "message", "title"]) {
+        const v = el.getAttribute(a);
+        if (v) texts.add(v);
+      }
+      for (const n of el.childNodes) {
+        if (n.nodeType == 3 && n.textContent.trim()) texts.add(n.textContent.trim());
+      }
+      if (el.shadowRoot) visit(el.shadowRoot);
+    }
+  };
+  for (const shown of doc.querySelectorAll("#mainPrefPane > [data-category]")) {
+    if (!shown.hidden && shown.checkVisibility()) visit(shown);
+  }
+  const lines = [...texts].filter(t => /firefox|mozilla/i.test(t));
+  if (lines.length) found[pane] = lines;
+}
+gBrowser.removeTab(tab);
+return { panes, found };
+"""
+
 ABOUT_JS = r"""
 // Help > About Whisper: Whisper's version, and the Firefox version it is based on.
 const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -957,6 +1031,33 @@ def main():
                      and not any(i["hidden"] for i in menu["items"])
                      and [i["mode"] for i in menu["items"] if i["checked"]] == ["expanded"], menu)
         capture(m, os.path.join(a.out, "2-menu.png"), report)
+        settings = m.run(SETTINGS_JS)
+        report.facts["settings"] = {k: v for k, v in settings.items() if k != "text"}
+        report.check("Settings open on Whisper's pane, first in the navigation",
+                     settings["hash"] == "#whisper" and settings["paneShown"]
+                     and settings["nav"][:1] == ["paneWhisper"], settings)
+        report.check("Whisper's settings pane shows its groups (Whisper, search, secure DNS, sync, your data)",
+                     {"whisperAbout", "whisperSearch", "whisperDns", "whisperSync", "whisperData"}
+                     <= set(settings["groups"]), settings["groups"])
+        report.check("Settings have no Mozilla help link and no About Firefox, Account and sync or Labs entry",
+                     not settings["helpButton"] and not {"paneAbout", "paneSync", "paneExperimental",
+                                                         "paneMoreFromMozilla"} & set(settings["nav"]),
+                     settings["nav"])
+        report.check("the Whisper pane's switches show the prefs (search suggestions, strict secure DNS)",
+                     settings["suggestions"] == settings["suggestPref"]
+                     and settings["dnsStrict"] == (settings["trrMode"] == 3), settings)
+        settings_text = m.run(SETTINGS_TEXT_JS)
+        report.facts["settings_text"] = settings_text
+        # Whisper's own pane names Firefox and Mozilla on purpose (the engine, the
+        # trademark notice, Mozilla's account for Sync, importing from Firefox); a font
+        # is called Twemoji Mozilla.
+        allowed = re.compile(r"Engine: Firefox \d|not affiliated with or endorsed by Mozilla|Mozilla account|"
+                             r"Mozilla’s servers|from Firefox, Zen|Twemoji Mozilla")
+        stray = {p: [t for t in lines if not allowed.search(t)] for p, lines in settings_text["found"].items()}
+        stray = {p: lines for p, lines in stray.items() if lines}
+        report.check("Settings name Firefox or Mozilla only where Whisper means them (no Mozilla offers, "
+                     "no \"Firefox Home\")", len(settings_text["panes"]) >= 8 and not stray,
+                     stray or settings_text["panes"])
         about = m.run(ABOUT_JS)
         report.facts["about"] = about
         capture(m, os.path.join(a.out, "2b-about.png"), report)
