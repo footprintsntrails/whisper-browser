@@ -1273,6 +1273,9 @@ def main():
                          or u.startswith(site.url("")) for u in dr["blocked"]) and not dr["helpTab"], dr)
         ai = m.run(AI_PREFS_JS)
         report.facts["ai"] = ai
+        gmp = m.run('return [Services.prefs.getBoolPref("media.eme.enabled"), Services.prefs.getBoolPref("media.gmp-gmpopenh264.enabled")];')
+        report.check("DRM (Widevine) and OpenH264 wait for consent: both off by default",
+                     gmp == [False, False], gmp)
         report.check("every AI feature and Translations are off and locked; no translate button, no AI chatbot",
                      not ai["wrong"] and not ai["translationsButton"] and "aichat" not in ai["sidebarTools"], ai)
         xdotool = shutil.which("xdotool") if os.environ.get("DISPLAY") else None

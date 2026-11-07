@@ -151,6 +151,7 @@ Preferences.addSetting({
 // --- Pages ----------------------------------------------------------------------------
 
 prefSetting("whisperDrm", "media.eme.enabled");
+prefSetting("whisperOpenH264", "media.gmp-gmpopenh264.enabled");
 
 // Dark Reader is an add-on: its switch is the add-on's own enabled state.
 const DARKREADER_ID = "addon@darkreader.org";
@@ -378,6 +379,11 @@ SettingGroupManager.registerGroups({
       {
         id: "whisperDrm",
         l10nId: "whisper-settings-drm",
+        control: "moz-toggle",
+      },
+      {
+        id: "whisperOpenH264",
+        l10nId: "whisper-settings-openh264",
         control: "moz-toggle",
       },
     ],

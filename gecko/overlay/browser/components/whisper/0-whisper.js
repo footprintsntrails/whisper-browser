@@ -160,10 +160,14 @@ pref("geo.provider.network.url", "", locked);
 // Updates of Mozilla's system add-ons (Whisper updates as a whole)
 pref("extensions.systemAddon.update.enabled", false, locked);
 pref("extensions.systemAddon.update.url", "", locked);
-// Media plugins (OpenH264 for WebRTC video, Widevine for DRM video) still download on
-// first start as in Firefox, but from the list built into Whisper (with SHA-512 of
-// each file) instead of asking Mozilla's update server (aus5.mozilla.org) first.
-// The address below is never reachable, so Firefox goes straight to that list.
+// Media plugins (Widevine for DRM video, OpenH264 for H.264 video calls) download only
+// with consent: DRM is off until it is turned on in Settings or the user agrees on a
+// site that needs it (Firefox's "enable DRM" bar), and OpenH264 is off until it is
+// turned on in Settings or in Add-ons > Plugins. Then they come from the list built
+// into Whisper (with SHA-512 of each file), not from Mozilla's update server
+// (aus5.mozilla.org): the address below is never reachable.
+pref("media.eme.enabled", false);
+pref("media.gmp-gmpopenh264.enabled", false);
 pref("media.gmp-manager.url", "data:,", locked);
 // Web push: no permanent connection to Mozilla's push server
 // (push.services.mozilla.com). Sites cannot send notifications while they are closed.

@@ -119,7 +119,10 @@ whisper-settings-darkreader =
     .description = Sites with their own dark design use it. The others are recoloured by Dark Reader, an open-source add-on that comes with { -brand-short-name } and fetches nothing: no news, no site fixes. It reads the pages it recolours, as any recolouring tool must, and stays out of container tabs.
 whisper-settings-drm =
     .label = Play DRM-protected video and music
-    .description = Netflix, Spotify and similar services. Google’s Widevine module is downloaded from Google once and runs in a sandbox. Off: those services won’t play.
+    .description = Netflix, Spotify and similar services. Off until you turn it on here or agree on a site that needs it; then Google’s Widevine module is downloaded from Google once and runs in a sandbox.
+whisper-settings-openh264 =
+    .label = H.264 for video calls
+    .description = Some video call sites need it. Off until you turn it on; then Cisco’s OpenH264 module is downloaded from Cisco once. Off: calls use other video formats.
 
 ## Your data
 

@@ -12,14 +12,9 @@ dns.quad9.net
 # Remote Settings: certificate revocation (CRLite), blocklists, tracking protection lists
 firefox.settings.services.mozilla.com
 
-# Media plugins, downloaded on first start as in Firefox (concept decision 1, default
-# "as stock" with a switch; a later "lazy CDM" option would fetch Widevine only when a
-# page asks for DRM). The file list and SHA-512 come from the build
-# (toolkit/content/gmp-sources), not from Mozilla's update server.
-ciscobinary.openh264.org
-update.googleapis.com
-edgedl.me.gvt1.com
-www.google.com
+# Media plugins (Widevine, OpenH264) are no longer fetched on the first start: they
+# wait for the user's consent (0-whisper.js), so their hosts (ciscobinary.openh264.org,
+# update.googleapis.com, edgedl.me.gvt1.com, www.google.com) are not listed here.
 
 # Whisper's own updates (gecko/release.env). The update check asks GitHub Pages for
 # update.xml; only when an update is offered does the browser download its MAR from
