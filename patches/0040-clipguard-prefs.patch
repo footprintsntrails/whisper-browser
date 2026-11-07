@@ -6,7 +6,19 @@ Why: these control Whisper's ClickFix protection. They are static prefs so the C
 widget/ and toolkit/components/clipguard can read them cheaply on every clipboard write.
 The behaviour itself is off unless the clipguard component is built (patches 0041-0043);
 clipguard.mode defaults to block.
+The "clipguard" group is also added to modules/libpref/moz.build's pref_groups, which
+is what generates mozilla/StaticPrefs_clipguard.h.
 ---
+--- a/modules/libpref/moz.build
++++ b/modules/libpref/moz.build
+@@ -33,6 +33,7 @@ pref_groups = [
+     "browser",
+     "channelclassifier",
+     "clipboard",
++    "clipguard",
+     "content",
+     "converter",
+     "datareporting",
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -2438,6 +2438,31 @@
