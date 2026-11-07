@@ -278,15 +278,20 @@ if (!button || !button.getBoundingClientRect().width) {
   return { shown: false };
 }
 const before = browser.browsingContext.currentWindowGlobal?.innerWindowId;
-const r = button.getBoundingClientRect();
-window.synthesizeMouseEvent("mousedown", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
-window.synthesizeMouseEvent("mouseup", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
 let after = before;
-for (let i = 0; i < 25 && after == before; i++) {
-  await sleep(200);
-  after = browser.browsingContext.currentWindowGlobal?.innerWindowId;
+let clicks = 0;
+// A second click if the first lands while the sidebar is still moving.
+for (let attempt = 0; attempt < 2 && after == before; attempt++) {
+  const r = button.getBoundingClientRect();
+  window.synthesizeMouseEvent("mousedown", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
+  window.synthesizeMouseEvent("mouseup", r.left + r.width / 2, r.top + r.height / 2, { button: 0 });
+  clicks++;
+  for (let i = 0; i < 25 && after == before; i++) {
+    await sleep(200);
+    after = browser.browsingContext.currentWindowGlobal?.innerWindowId;
+  }
 }
-return { shown: true, reloaded: after != before, url: browser.currentURI.spec };
+return { shown: true, reloaded: after != before, clicks, url: browser.currentURI.spec };
 """
 
 TABS_JS = r"""
@@ -388,6 +393,59 @@ return {
   suggestEnabled: Services.prefs.getBoolPref("browser.search.suggest.enabled"),
   requests: seen,
 };
+"""
+
+DOWNLOAD_JS = r"""
+// Downloads a file the way a click on a link does and watches the toolbar's
+// downloads button: it must appear, play Firefox's "download started" animation and
+// list the finished download in its panel.
+const [url] = args;
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
+const list = await Downloads.getList(Downloads.ALL);
+const before = (await list.getAll()).length;
+const button = document.getElementById("downloads-button");
+const shown = e => !!e && e.getBoundingClientRect().width > 0 && getComputedStyle(e).visibility != "hidden";
+const result = { placed: !!button, shownBefore: shown(button), notifications: [] };
+const observer = new MutationObserver(() => {
+  const n = button.getAttribute("notification");
+  if (n && !result.notifications.includes(n)) {
+    result.notifications.push(n);
+  }
+});
+if (button) {
+  observer.observe(button, { attributes: true, attributeFilter: ["notification", "animate"] });
+}
+gBrowser.selectedBrowser.fixupAndLoadURIString(url, {
+  triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+});
+let download = null;
+for (let i = 0; i < 60; i++) {
+  await sleep(250);
+  const all = await list.getAll();
+  download = all.length > before ? all.at(-1) : null;
+  if (download?.succeeded) {
+    break;
+  }
+}
+await sleep(1000);
+observer.disconnect();
+result.shownAfter = shown(button);
+result.succeeded = !!download?.succeeded;
+result.target = download?.target?.path?.split(/[\\/]/).pop() ?? null;
+result.panelOpened = document.getElementById("downloadsPanel")?.state == "open";
+if (!result.panelOpened) {
+  // Firefox opens the panel by itself only when the window has the focus.
+  DownloadsPanel.showPanel();
+  for (let i = 0; i < 20 && document.getElementById("downloadsPanel")?.state != "open"; i++) {
+    await sleep(100);
+  }
+  await sleep(500);
+}
+result.panelItems = [...document.querySelectorAll("#downloadsListBox richlistitem")]
+  .map(i => i.querySelector(".downloadTarget")?.getAttribute("value") ?? i.textContent.trim());
+result.reducedMotion = matchMedia("(prefers-reduced-motion)").matches;
+return result;
 """
 
 CONSOLE_JS = r"""
@@ -547,6 +605,9 @@ class LocalSite:
             body = body.replace("PROBES_JSON", json.dumps([[u, k] for u, k, _ in PROBES]))
             with open(os.path.join(self.root, name), "w", encoding="utf-8") as f:
                 f.write(body)
+        # A file the browser downloads instead of showing (application/octet-stream).
+        with open(os.path.join(self.root, "whisper-download-test.bin"), "wb") as f:
+            f.write(os.urandom(256 * 1024))
         handler = functools.partial(_QuietHandler, directory=self.root)
         self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -861,6 +922,19 @@ def main():
         report.check("compact mode is a narrow icon strip (at most 60 px)", 36 <= widths["compact"] <= 60, widths)
         report.check("expanded mode is wider than compact and at most 240 px",
                      widths["compact"] < widths["expanded"] <= 240, widths)
+
+        # Downloads: 0.1.0's toolbar had no downloads button, so a download showed nothing.
+        try:
+            dl = m.run(DOWNLOAD_JS, site.url("whisper-download-test.bin"))
+        except MarionetteError as e:
+            dl = {"error": str(e)[:500]}
+        capture(m, os.path.join(a.out, "5c-download.png"), report)
+        m.run('document.getElementById("downloadsPanel")?.hidePopup?.(); return 1;')
+        report.facts["download"] = dl
+        report.check("a download shows the downloads button, its start animation and the finished file in the panel",
+                     dl.get("placed") and dl.get("shownAfter") and dl.get("succeeded")
+                     and ("start" in dl.get("notifications", []) or dl.get("reducedMotion"))
+                     and any("whisper-download-test" in i for i in dl.get("panelItems", [])), dl)
 
         # Horizontal tabs on Firefox's own tab strip, and back, keeping every tab.
         m.run(ADD_TAB_JS, True)
