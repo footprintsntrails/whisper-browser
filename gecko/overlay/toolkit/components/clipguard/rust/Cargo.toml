@@ -1,0 +1,38 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# clipguard: decides what Whisper does when a page puts text on the clipboard
+# (ClickFix protection). Pure Rust, no Gecko dependencies and no unsafe code; the C ABI
+# for Gecko is the clipguard_ffi crate next to this one.
+#
+# The crate is built twice:
+#   - inside the Firefox tree, linked into libxul through gkrust-shared, with the
+#     dependency versions Firefox vendors in third_party/rust (regex 1.12.3,
+#     aho-corasick 1.1.0, memchr 2.7.4, toml 1.1.5 at build time);
+#   - in Whisper's own Cargo workspace for `cargo test` and `cargo clippy`, with the
+#     versions in Whisper's Cargo.lock.
+# So only APIs both versions have are used, and the fields below are written out instead
+# of taken from a workspace (Firefox's workspace does not have Whisper's keys).
+
+[package]
+name = "clipguard"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+description = "Whisper's ClickFix check: classifies clipboard text written by web pages"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+aho-corasick = "1.1"
+memchr = "2.7"
+# Byte-oriented, ASCII-only patterns (every rule is compiled with (?i-u)), so no Unicode
+# tables are needed.
+regex = { version = "1.12", default-features = false, features = ["std", "perf"] }
+
+[build-dependencies]
+# Turns rules.toml into Rust tables at build time; there are no rules from the network.
+toml = { version = "1.1", default-features = false, features = ["std", "serde", "parse"] }

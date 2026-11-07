@@ -1,0 +1,23 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# The C ABI of the clipguard crate for Gecko (nsBaseClipboard). Linked into libxul through
+# gkrust-shared; cbindgen writes mozilla/clipguard_ffi_generated.h from it (see
+# ../moz.build). Needs Firefox's tree (nsstring), so it is not part of Whisper's own
+# Cargo workspace; the logic and its tests live in ../rust.
+
+[package]
+name = "clipguard_ffi"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+clipguard = { path = "../rust" }
+nsstring = { path = "../../../../xpcom/rust/nsstring" }
+thin-vec = { version = "0.2.1", features = ["gecko-ffi"] }
