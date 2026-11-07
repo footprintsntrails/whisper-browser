@@ -1,0 +1,44 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Whisper's security features: input guards (recovery phrases, swapped addresses),
+# the download check, external programs and clean links. All new files; loaded from
+# WhisperSecurity.manifest through the same window lifecycle categories as the rest
+# of Whisper.
+#
+#   0-whisper-security.js          default (and locked) prefs, each with its reason
+#   WhisperSecurity.manifest       registers WhisperSecurity with Firefox's categories
+#   WhisperSecurity.sys.mjs        entry point: the input actor and the download hook
+#   WhisperInputGuard*.sys.mjs     the page-input actor (content process) and its parent
+#   SeedPhrase, SeedWordlists      recovery phrase detection (BIP39 lists, Electrum)
+#   CryptoAddress, WhisperHash     address recognition and comparison; SHA-2 helpers
+#   WhisperAddressMemory           the last copied address, in memory only
+#   WhisperGuardDialog             opens the guard dialog over a tab
+#   WhisperGuardEngine             runs the Rust checks (crates/wcore_wasm as WebAssembly) in a worker
+#   WhisperDownloadGuard           the download check (crates/dl_guard)
+#   WhisperProtocolGuard           links that open programs, native messaging (crates/proto_guard)
+#   content/                       dialogs, the hold-to-allow button, the guard worker
+#   settings/                      settings fragments for the Whisper pane
+#   locales/                       strings
+
+JAR_MANIFESTS += ["jar.mn"]
+
+JS_PREFERENCE_FILES += ["0-whisper-security.js"]
+
+EXTRA_COMPONENTS += ["WhisperSecurity.manifest"]
+
+MOZ_SRC_FILES += [
+    "CryptoAddress.sys.mjs",
+    "SeedPhrase.sys.mjs",
+    "SeedWordlists.sys.mjs",
+    "WhisperAddressMemory.sys.mjs",
+    "WhisperDownloadGuard.sys.mjs",
+    "WhisperGuardDialog.sys.mjs",
+    "WhisperGuardEngine.sys.mjs",
+    "WhisperHash.sys.mjs",
+    "WhisperInputGuardChild.sys.mjs",
+    "WhisperInputGuardParent.sys.mjs",
+    "WhisperProtocolGuard.sys.mjs",
+    "WhisperSecurity.sys.mjs",
+]

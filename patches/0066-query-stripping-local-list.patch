@@ -1,0 +1,29 @@
+Whisper: tracking parameters stripped from a local list only
+
+What: the query stripping list service no longer fetches Mozilla's remote list (Remote
+Settings collection "query-stripping"); it uses the local lists only, unless the pref
+whisper.cleanlinks.remote_list is set.
+Why: Whisper ships its own, longer list in privacy.query_stripping.strip_list
+(security/0-whisper-security.js) and keeps the network quiet: the collection has no
+copy in the build, so on first use Firefox would download it, and the remote list can
+also exempt sites. Copy stripping (the bundled StripOnShare lists) is not affected.
+---
+diff --git a/toolkit/components/antitracking/URLQueryStrippingListService.sys.mjs b/toolkit/components/antitracking/URLQueryStrippingListService.sys.mjs
+--- a/toolkit/components/antitracking/URLQueryStrippingListService.sys.mjs
++++ b/toolkit/components/antitracking/URLQueryStrippingListService.sys.mjs
+@@ -179,7 +179,14 @@
+ 
+     // We can only access the remote settings in the parent process. For content
+     // processes, we will use sharedData to sync the list to content processes.
+-    if (this.isParentProcess) {
++    if (
++      this.isParentProcess &&
++      !Services.prefs.getBoolPref("whisper.cleanlinks.remote_list", false)
++    ) {
++      // Whisper: only the local lists (privacy.query_stripping.strip_list and
++      // allow_list, and the bundled strip-on-share lists); nothing is fetched.
++      this._onRemoteSettingsUpdate([]);
++    } else if (this.isParentProcess) {
+       this.#rs = lazy.RemoteSettings(COLLECTION_NAME);
+ 
+       if (!this.#onSyncCallback) {

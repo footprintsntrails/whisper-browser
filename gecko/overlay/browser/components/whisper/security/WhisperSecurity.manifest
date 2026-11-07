@@ -1,0 +1,5 @@
+# Whisper's security features start from the same categories Firefox uses for its own
+# features (browser/components/BrowserComponents.manifest).
+category browser-before-ui-startup moz-src:///browser/components/whisper/security/WhisperSecurity.sys.mjs WhisperSecurity.init
+category browser-window-delayed-startup moz-src:///browser/components/whisper/security/WhisperSecurity.sys.mjs WhisperSecurity.onWindowDelayedStartup
+category browser-window-unload moz-src:///browser/components/whisper/security/WhisperSecurity.sys.mjs WhisperSecurity.onWindowUnload

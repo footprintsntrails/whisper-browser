@@ -934,11 +934,17 @@ def main():
         # The import offer on a first start (WhisperImport.sys.mjs) is tested on its own
         # (import_test.py); here it must not open a window over the checks.
         f.write('user_pref("whisper.import.offerOnFirstRun", false);\n')
+        # The resolver log (resolver-hostnames.txt) comes from the browser's logging
+        # prefs: Whisper ignores the MOZ_LOG and MOZ_LOG_FILE environment variables
+        # (patches/0061).
+        f.write('user_pref("logging.config.clear_on_startup", false);\n')
+        f.write('user_pref("logging.config.add_timestamp", true);\n')
+        f.write(f'user_pref("logging.config.LOG_FILE", {json.dumps(os.path.join(a.out, "mozlog"))});\n')
+        f.write('user_pref("logging.nsHostResolver", 5);\n')
     log = open(os.path.join(a.out, "browser.log"), "w")
     # MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: Marionette may run scripts in the browser's own
     # (chrome) context only when this is set; the test reads prefs and state there.
-    env = dict(os.environ, MOZ_LOG="nsHostResolver:5,timestamp",
-               MOZ_LOG_FILE=os.path.join(a.out, "mozlog"), MOZ_REMOTE_ALLOW_SYSTEM_ACCESS="1")
+    env = dict(os.environ, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS="1")
     started = time.monotonic()
     proc = subprocess.Popen([binary, "--marionette", "--no-remote", "--profile", profile],
                             stdout=log, stderr=subprocess.STDOUT, env=env)

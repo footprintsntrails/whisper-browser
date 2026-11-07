@@ -1,0 +1,49 @@
+Whisper: ask before an add-on starts a program (native messaging)
+
+What: before Firefox starts the program of an add-on's native messaging host, it waits
+for WhisperProtocolGuard.checkNativeMessaging, which asks the user with the add-on's
+name, the host and the program's full path (or finds that the user already allowed
+this add-on and host); if the user does not allow it, the program is not started and
+the add-on gets the usual error.
+Why: native messaging starts an ordinary program, outside the browser's sandbox, with
+the user's rights, and Firefox asks nothing beyond the add-on's install-time
+permission. Covers connectNative and sendNativeMessage (both go through this
+constructor). The Flatpak/Snap portal path (Linux only) is not covered: there the
+portal starts the program.
+---
+diff --git a/toolkit/components/extensions/NativeMessaging.sys.mjs b/toolkit/components/extensions/NativeMessaging.sys.mjs
+--- a/toolkit/components/extensions/NativeMessaging.sys.mjs
++++ b/toolkit/components/extensions/NativeMessaging.sys.mjs
+@@ -27,6 +27,8 @@
+   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
+   NativeManifests: "resource://gre/modules/NativeManifests.sys.mjs",
+   Subprocess: "resource://gre/modules/Subprocess.sys.mjs",
++  WhisperProtocolGuard:
++    "moz-src:///browser/components/whisper/security/WhisperProtocolGuard.sys.mjs",
+   maxRead: { pref: PREF_MAX_READ, default: MAX_READ },
+   maxWrite: { pref: PREF_MAX_WRITE, default: MAX_WRITE },
+   portal: {
+@@ -103,7 +105,7 @@
+       application,
+       context
+     )
+-      .then(hostInfo => {
++      .then(async hostInfo => {
+         if (!hostInfo) {
+           this._throwGenericError(application);
+         }
+@@ -135,6 +137,14 @@
+           disclaim: true,
+         };
+ 
++        // Whisper: the user decides before the program starts (name, full path;
++        // WhisperProtocolGuard.checkNativeMessaging throws if not allowed).
++        await lazy.WhisperProtocolGuard.checkNativeMessaging(
++          context,
++          application,
++          hostInfo,
++          command
++        );
+         return lazy.Subprocess.call(subprocessOpts);
+       })
+       .then(proc => {

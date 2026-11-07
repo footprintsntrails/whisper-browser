@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<?csp default-src chrome:; style-src chrome:; object-src 'none'; ?>
+
+<!DOCTYPE window>
+
+<!-- Whisper's guard dialog: recovery phrases, swapped addresses, external programs and
+     native messaging hosts (guard-dialog.mjs fills it in from window.arguments[0]).
+     Opened tab-modal by WhisperGuardDialog.sys.mjs. Everything shown comes from
+     Whisper's own strings; values from a page or a program (addresses, a program's
+     path) are set as text, never as markup. -->
+<window
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  role="dialog"
+  aria-labelledby="guard-title"
+  aria-describedby="guard-lead"
+>
+  <linkset>
+    <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <html:link rel="stylesheet" href="chrome://whisper/content/security/guard-dialog.css" />
+    <html:link rel="localization" href="branding/brand.ftl" />
+    <html:link rel="localization" href="whisper/whisper-security.ftl" />
+  </linkset>
+  <html:script type="module" src="chrome://whisper/content/security/guard-dialog.mjs" />
+
+  <html:main id="guard" class="guard">
+    <html:h1 id="guard-title" class="guard-title"></html:h1>
+    <html:p id="guard-lead" class="guard-lead"></html:p>
+    <html:div id="guard-body" class="guard-body"></html:div>
+    <html:div id="guard-actions" class="guard-actions"></html:div>
+    <html:p id="guard-status" class="guard-status" role="status" aria-live="polite"></html:p>
+  </html:main>
+</window>

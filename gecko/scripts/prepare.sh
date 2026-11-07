@@ -113,6 +113,10 @@ python3 -c 'import sys, xml.dom.minidom; xml.dom.minidom.parse(sys.argv[1])' \
 
 branding="$src/browser/branding/whisper"
 whisper="$src/browser/components/whisper"
+
+# The guard engine (Rust: crates/dl_guard and crates/proto_guard, as WebAssembly), which
+# browser/components/whisper/security/jar.mn packages. Built here, not kept in git.
+"$gecko/scripts/build-wasm.sh" "$whisper/security/content/wcore.wasm"
 icon="$repo/assets/icon/whisper.ico"
 art="$repo/assets/installer"
 

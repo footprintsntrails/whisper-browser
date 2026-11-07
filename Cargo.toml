@@ -2,8 +2,16 @@
 resolver = "3"
 # gecko/overlay/toolkit/components/clipguard/rust is the ClickFix check that is built
 # into the browser; it is a member here so `cargo test` and `cargo clippy` cover it.
-# Its C ABI (../ffi) needs Firefox's tree and is built only there.
-members = ["crates/xtask", "gecko/overlay/toolkit/components/clipguard/rust"]
+# Its C ABI (../ffi) needs Firefox's tree and is built only there. dl_guard,
+# proto_guard and wcore_wasm are the security features' guard engine
+# (gecko/scripts/build-wasm.sh).
+members = [
+  "crates/xtask",
+  "crates/dl_guard",
+  "crates/proto_guard",
+  "crates/wcore_wasm",
+  "gecko/overlay/toolkit/components/clipguard/rust",
+]
 exclude = ["gecko/overlay/toolkit/components/clipguard/ffi"]
 
 [workspace.package]

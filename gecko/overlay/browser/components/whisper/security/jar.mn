@@ -1,0 +1,20 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+browser.jar:
+    content/whisper/security/guard-dialog.xhtml   (content/guard-dialog.xhtml)
+    content/whisper/security/guard-dialog.mjs     (content/guard-dialog.mjs)
+    content/whisper/security/guard-dialog.css     (content/guard-dialog.css)
+    content/whisper/security/hold-button.mjs      (content/hold-button.mjs)
+    content/whisper/security/guard-worker.js      (content/guard-worker.js)
+    content/whisper/security/program-dialog.mjs   (content/program-dialog.mjs)
+# Settings fragment for the Whisper pane (see the file).
+    content/whisper/security/settings/whisper-security-settings.mjs (settings/whisper-security-settings.mjs)
+# Built from crates/wcore_wasm by gecko/scripts/build-wasm.sh (prepare.sh puts it here).
+    content/whisper/security/wcore.wasm           (content/wcore.wasm)
+
+# English only for now, shipped as-is for every locale (as whisper.ftl).
+[localization] @AB_CD@.jar:
+    whisper/whisper-security.ftl                         (locales/en-US/whisper-security.ftl)
+    whisper/whisper-security-settings.ftl                (locales/en-US/whisper-security-settings.ftl)

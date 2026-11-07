@@ -1,0 +1,19 @@
+[package]
+name = "wcore_wasm"
+description = "The WebAssembly module Whisper runs in a worker: dl_guard and proto_guard behind a byte-buffer interface."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+dl_guard = { path = "../dl_guard" }
+proto_guard = { path = "../proto_guard" }
