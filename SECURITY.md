@@ -15,7 +15,6 @@ You will get an answer as soon as possible, and credit in the release notes if y
   (prefs, interface, import), and how it is built and released
 - The update path: the update host, the MAR signing and its checks, the updater's certificates
 - The installers and packages built by this repository
-- The launcher in `crates/` is no longer released; its code is kept for reuse
 
 Problems in Firefox itself go to [Mozilla](https://www.mozilla.org/security/), and problems in
 uBlock Origin to [its project](https://github.com/gorhill/uBlock).

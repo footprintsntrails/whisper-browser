@@ -43,7 +43,7 @@ const ALLOWED_ADDRESSES: &[&str] = &[
 ];
 
 /// Third-party license texts are kept as published.
-const SKIP: &[&str] = &["LICENSE", "profile/chrome/fonts/OFL.txt", "Cargo.lock"];
+const SKIP: &[&str] = &["LICENSE", "assets/fonts/OFL.txt", "Cargo.lock"];
 
 pub fn scan() -> Result<(), String> {
     let out = Command::new("git")

@@ -28,7 +28,6 @@ CLAUDE.local.md
 .env
 .env.*
 *.pem
-!keys/*.pub.pem
 *.key
 *.p12
 *.pfx

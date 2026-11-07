@@ -120,8 +120,8 @@ jobs:
         run: |
           # shellcheck source=gecko/firefox.env
           . gecko/firefox.env
-          # Named explicitly: this repository's rust-toolchain.toml (for the Whisper
-          # launcher) would otherwise pick another toolchain inside the checkout.
+          # Named explicitly: this repository's rust-toolchain.toml (for its build tooling,
+          # crates/xtask) would otherwise pick another toolchain inside the checkout.
           rustup toolchain install "$RUST_VERSION" --profile minimal --no-self-update
           rustup default "$RUST_VERSION"
           if [ "$TARGET" = windows-x86_64 ]; then

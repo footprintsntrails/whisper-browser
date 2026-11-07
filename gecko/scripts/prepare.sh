@@ -134,9 +134,9 @@ if [ "$variant" = canary ]; then
   echo "Whisper Canary branding in browser/branding/whisper-canary"
 fi
 
-# Fonts: the same Inter files the profile kit uses.
+# Fonts: Inter, with its license (SIL Open Font License), from assets/fonts.
 mkdir -p "$whisper/content/fonts"
-cp "$repo"/profile/chrome/fonts/Inter-{Regular,Medium,SemiBold}.woff2 "$repo/profile/chrome/fonts/OFL.txt" \
+cp "$repo"/assets/fonts/Inter-{Regular,Medium,SemiBold}.woff2 "$repo/assets/fonts/OFL.txt" \
   "$whisper/content/fonts/"
 
 # Windows icons and installer artwork come from assets/ (rendered by `cargo xtask icons`

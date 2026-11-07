@@ -41,7 +41,7 @@ def main():
         if mode in ("100644", "100755") and has_shebang(path) and mode != "100755":
             problems.append(f"{path}: starts with #! but is {mode}; run git update-index --chmod=+x {path}")
 
-    script = re.compile(r"(?<![\w./-])((?:\./)?(?:gecko|crates|packaging|\.github)/[\w./-]+\.(?:sh|py))\b")
+    script = re.compile(r"(?<![\w./-])((?:\./)?(?:gecko|crates|\.github)/[\w./-]+\.(?:sh|py))\b")
     workflows = os.path.join(ROOT, ".github", "workflows")
     for name in sorted(os.listdir(workflows)):
         if not name.endswith((".yml", ".yaml")):

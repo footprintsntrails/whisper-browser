@@ -32,7 +32,7 @@ on:
     paths:
       - gecko/**
       - patches/**
-      - profile/chrome/fonts/**
+      - assets/fonts/**
       - assets/icon/**
       - assets/installer/**
       - .github/workflows/gecko.yml

@@ -53,7 +53,7 @@ FILES = [
 
 # What a full build is made from (the paths in gecko.yml's push filter). A change
 # there, other than to a file in FILES or to NOT_BUILT, needs the full build.
-BUILT = ("gecko/", "patches/", "profile/chrome/fonts/", "assets/icon/", "assets/installer/",
+BUILT = ("gecko/", "patches/", "assets/fonts/", "assets/icon/", "assets/installer/",
          ".github/workflows/gecko.yml", ".github/workflows/gecko-build.yml")
 NOT_BUILT = ("gecko/scripts/smoke/", "gecko/scripts/update/", "gecko/scripts/repack-ui.py",
              "gecko/network-allowlist.txt")

@@ -50,10 +50,6 @@ jobs:
           python3 -m py_compile gecko/scripts/*.py gecko/scripts/*/*.py
       - name: Every script that is run directly is executable
         run: python3 .github/check-scripts.py
-      - name: Desktop entry
-        run: |
-          sudo apt-get update -q && sudo apt-get install -y -q desktop-file-utils
-          desktop-file-validate packaging/linux/whisper.desktop
 
   deny:
     name: Advisories and licenses
@@ -67,24 +63,3 @@ jobs:
         with:
           command: check
           arguments: --all-features
-
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/rust
-        with:
-          cache-key: test
-      - name: clippy for this system
-        run: cargo clippy -p whisper --all-targets --features test-hooks --locked -- -D warnings
-      - name: Unit and end-to-end tests
-        run: cargo test --workspace --features whisper/test-hooks --locked
-
