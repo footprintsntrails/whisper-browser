@@ -359,6 +359,37 @@ return {
 };
 """
 
+TYPING_JS = r"""
+// Typing in the address bar with the default settings: which web requests start.
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const seen = [];
+const observer = {
+  observe(subject) {
+    try {
+      seen.push(subject.QueryInterface(Ci.nsIChannel).URI.spec);
+    } catch (e) {}
+  },
+};
+Services.obs.addObserver(observer, "http-on-opening-request");
+try {
+  gURLBar.focus();
+  for (const text of ["b", "bv", "bvg", "bvgsdf", "bvgsdf whisper"]) {
+    gURLBar.search(text);
+    await sleep(400);
+  }
+  await sleep(2500);
+} finally {
+  Services.obs.removeObserver(observer, "http-on-opening-request");
+  gURLBar.view.close();
+  gURLBar.handleRevert();
+  gBrowser.selectedBrowser.focus();
+}
+return {
+  suggestEnabled: Services.prefs.getBoolPref("browser.search.suggest.enabled"),
+  requests: seen,
+};
+"""
+
 CONSOLE_JS = r"""
 // Errors and warnings in the browser console, for diagnosis.
 return Services.console.getMessageArray()
@@ -720,6 +751,14 @@ def main():
                      all(search.get(e) and "whisper" in search[e] and not codes.search(search[e].split("?", 1)[1])
                          for e in ("ddg", "google", "bing")),
                      {e: search.get(e) for e in ("ddg", "google", "bing")})
+        typing = m.run(TYPING_JS)
+        report.facts["typing"] = typing
+        # Background work (uBlock Origin's lists, Remote Settings) may run meanwhile; what
+        # matters is that nothing goes to a search engine or carries what was typed.
+        typed = [u for u in typing["requests"]
+                 if "bvgsdf" in u or re.search(r"duckduckgo\.com|google\.|bing\.com", u)]
+        report.check("typing in the address bar sends nothing to a search engine (suggestions are off)",
+                     not typing["suggestEnabled"] and not typed, typed or typing)
         menu = m.run(MENU_JS, 100, 450)
         report.facts["menu"] = menu
         labels = [i["label"] for i in menu["items"]]

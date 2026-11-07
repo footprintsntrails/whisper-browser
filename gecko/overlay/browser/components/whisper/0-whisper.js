@@ -81,6 +81,11 @@ pref("browser.newtabpage.activity-stream.showWeather", false);
 pref("browser.newtabpage.activity-stream.system.showWeather", false);
 pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", false);
 
+// --- Search suggestions: off ---------------------------------------------------------
+// Suggestions send what you type to the search engine while you type, before you
+// press Enter. Settings turns them on.
+pref("browser.search.suggest.enabled", false);
+
 // --- Address bar: no Firefox Suggest, no trending searches --------------------------
 pref("browser.urlbar.suggest.quicksuggest.nonsponsored", false);
 pref("browser.urlbar.quicksuggest.enabled", false);
