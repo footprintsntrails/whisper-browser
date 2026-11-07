@@ -1,0 +1,536 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Whisper's ClickFix rules. build.rs turns this file into Rust tables inside the browser,
+# so the rules change only with a browser update: nothing is downloaded.
+#
+# The checks run on a folded copy of the clipboard text (see src/normalize.rs): invisible
+# characters removed, full-width letters, typographic dashes and quotes and look-alike
+# Cyrillic or Greek letters mapped to ASCII, and the usual shell obfuscation undone
+# (p^o^w^e^r^s^h^e^l^l, Po`wer`Shell, 'iw'+'r', i""ex). Every pattern is matched without
+# regard to case against the bytes of that text, ASCII only: (?i-u) is added in front.
+# A pattern is written over several lines for reading; build.rs joins the lines with
+# their leading and trailing spaces removed, so a space that matters is written \s or [ ].
+#
+# A pattern only runs when one of its anchors (plain, case-insensitive text) occurs in the
+# folded text, so every way the pattern can match must contain one of its anchors. The
+# tests check that for every example in the corpora.
+#
+# Classes:
+#   chain       downloads or decodes code and runs it. Level MED; HIGH when the feature
+#               is strong or an aggravator is present too.
+#   aggravator  hides, obfuscates or points at a bare IP address. Makes a chain HIGH. With
+#               low_alone, it is LOW on its own when the text also has a command word.
+#   lure        text that pretends to be a "verification" ("I am not a robot",
+#               "Verification ID: 4417"), usually in a comment. CRITICAL with a command
+#               word, LOW without one.
+#   padding     the command is pushed out of view by spaces (FileFix). The first capture
+#               group that matched is the part of the line before the spaces; it must
+#               hold a command word. CRITICAL.
+#   tool        starts a Windows program attackers use to run code. LOW.
+#
+# reason is what the browser tells the person (download_run, decode_run, remote_tool,
+# unc_run, hidden_window, obfuscated, raw_ip, lure_comment, padded_comment,
+# quarantine_removal, abused_tool).
+
+format = 1
+
+# What the clipboard holds instead of a blocked command: one line, no line break, nothing a
+# shell, the Run box or the Explorer address bar would execute (a test checks this).
+placeholder = "# BLOCKED BY BROWSER page tried to place a command here do not run it"
+
+# How many bytes of a write the browser scans in full. The whole write up to this size is
+# classified (the regular expressions here run in linear time, so this bounds the work); a
+# write larger than this is treated as at least MED, so a script cannot bury a command in
+# the part that was not scanned.
+max_scan_bytes = 262144
+
+[command]
+# Words that make a text a command for the checks that need one (invisible characters,
+# look-alike letters, terminal control characters, lure comments, padding). Matched as
+# whole words in the folded text.
+words = [
+  "powershell", "pwsh", "cmd", "cmd.exe", "iex", "iwr", "irm", "invoke-expression",
+  "invoke-webrequest", "invoke-restmethod", "start-process", "curl", "wget", "bash", "zsh",
+  "sh", "mshta", "msiexec", "rundll32", "regsvr32", "certutil", "bitsadmin", "conhost",
+  "cscript", "wscript", "osascript", "sudo", "chmod", "base64", "finger", "nslookup",
+  "forfiles", "explorer.exe", "frombase64string", "downloadstring", "python", "python3",
+]
+
+# --- Download and run ---------------------------------------------------------------
+
+[[feature]]
+id = "ps_download_exec"
+class = "chain"
+reason = "download_run"
+anchors = ["iex", "invoke-expression", "scriptblock", ".invoke(", "iwr", "irm", "invoke-webrequest", "invoke-restmethod", "downloadstring", "net.webclient"]
+pattern = '''
+\b(?:iex|invoke-expression)\b[\s\S]{0,300}?
+(?:\b(?:iwr|irm|wget|curl|invoke-webrequest|invoke-restmethod|start-bitstransfer)\b
+|\.download(?:string|file|data)\b|net\.webclient|httpclient|winhttp|xmlhttp)
+|(?:\b(?:iwr|irm|wget|curl|invoke-webrequest|invoke-restmethod)\b|\.download(?:string|data)\b|net\.webclient)
+[\s\S]{0,400}?
+(?:\|\s*(?:iex|invoke-expression)\b|\b(?:iex|invoke-expression)\b|\[scriptblock\]::create|\.invoke\(\)
+|\|\s*(?:py|python[0-9.]*|pwsh|powershell|cmd)(?:\.exe)?(?:\s+-(?:\s+[^\n;&|]*)?)?\s*(?:$|[\n;&|)"']))
+'''
+
+[[feature]]
+id = "ps_download_start"
+class = "chain"
+reason = "download_run"
+anchors = ["iwr", "irm", "wget", "curl", "invoke-webrequest", "invoke-restmethod", "downloadfile", "start-bitstransfer"]
+pattern = '''
+(?:\b(?:iwr|irm|wget|curl|invoke-webrequest|invoke-restmethod)\b
+|\.downloadfile\s*\(|\bstart-bitstransfer\b[^\n]{0,300}?-destination\b)
+[\s\S]{0,400}?
+(?:\bstart-process\b|\bsaps\b|\binvoke-item\b|\bii\s|&\s*["'$(]|\bstart\s+["'$%]
+|\b(?:rundll32|regsvr32|msiexec|mshta|wscript|cscript)\b|\bcmd(?:\.exe)?\s+/[ck]\b
+|\bpowershell(?:\.exe)?\b[^\n]{0,80}?\s-(?:f|file)\b)
+'''
+
+[[feature]]
+id = "ps_output_exec"
+class = "chain"
+reason = "download_run"
+anchors = ["iex", "invoke-expression", "powershell", "pwsh", "cmd"]
+pattern = '''
+\b(?:powershell|pwsh|iex|invoke-expression|cmd)(?:\.exe)?['"]?\s*\(\s*[.&]?\s*['"]?
+(?:iwr|irm|wget|curl|invoke-webrequest|invoke-restmethod)\b
+|(?:https?://|\b(?:\d{1,3}\.){3}\d{1,3}[:/])[^\s|]*\s*['"]?\s*\)?\s*\|\s*(?:iex|invoke-expression)\b
+'''
+
+[[feature]]
+id = "sh_download_pipe"
+class = "chain"
+reason = "download_run"
+anchors = ["curl", "wget", "fetch", "aria2c"]
+pattern = '''
+\b(?:curl|wget|fetch|aria2c)(?:\.exe)?\b[^\n|;&]{0,400}\|\s*
+(?:(?:sudo|doas|nohup|setsid|nice|exec|command)\s+(?:-\S+\s+)*)*
+(?:(?:\S*/)?env\s+(?:-\S+\s+)*(?:\S+=\S*\s+)*)?
+(?:\S*/)?
+(?:(?:(?:ba|z|da|k|c|tc|fi|a)?sh|pwsh|powershell|cmd|iex|source)(?:\.exe)?\b
+|(?:python[0-9.]*|py|perl|ruby|node|php)(?:\.exe)?(?:\s+-(?:\s+[^\n;&|]*)?)?\s*(?:$|[\n;&|)"']))
+'''
+
+[[feature]]
+id = "sh_download_subshell"
+class = "chain"
+reason = "download_run"
+anchors = ["curl", "wget", "fetch"]
+pattern = '''
+\b(?:(?:ba|z|da|k|tc|fi|a)?sh|eval|source|python[0-9.]*|perl|ruby|node)\b[^\n]{0,60}?
+(?:<\(|\$\(|`)\s*(?:curl|wget|fetch)\b
+|(?:^|[;&|(]|\s)\.\s+<\(\s*(?:curl|wget|fetch)\b
+'''
+
+[[feature]]
+id = "download_save_run"
+class = "chain"
+reason = "download_run"
+anchors = ["curl", "wget", "certutil", "bitsadmin"]
+pattern = '''
+\b(?:curl|wget|certutil|bitsadmin)(?:\.exe)?\b[^\n]{0,400}?
+(?:\s-o\b|\s--output\b|\s-outfile\b|-urlcache\b|/transfer\b|\s-o\S|\s-[a-z]*o\s)
+[^\n]{0,300}?
+(?:&&|&|;|\|\||\n)\s*
+(?:start\b|call\b|cmd\b|powershell\b|pwsh\b|mshta\b|wscript\b|cscript\b|bash\b|sh\b|zsh\b
+|chmod\b|open\b|msiexec\b|rundll32\b|regsvr32\b|start-process\b|\.[/\\]|%\w+%\\|\$env:
+|"?[a-z]:\\|/tmp/|/var/tmp/|~/|\$\w+/|\$home/)
+'''
+
+[[feature]]
+id = "script_download_exec"
+class = "chain"
+reason = "download_run"
+anchors = ["python", "py ", "node", "perl", "ruby"]
+pattern = '''
+\b(?:python[0-9.]*|py)\b\s+-c\b[\s\S]{0,400}?(?:urlopen|urlretrieve|requests\.get|urllib)[\s\S]{0,400}?\bexec\b
+|\b(?:python[0-9.]*|py)\b\s+-c\b[\s\S]{0,400}?\bexec\b[\s\S]{0,400}?(?:urlopen|requests\.get|urllib)
+|\bnode\b\s+-e\b[\s\S]{0,400}?(?:\bfetch\s*\(|https?\.get\s*\(|require\(\s*["']https?["']\s*\))[\s\S]{0,400}?(?:\beval\b|\bfunction\s*\(|new\s+function\b|vm\.run)
+|\bperl\b\s+-e\b[\s\S]{0,400}?(?:lwp|http::tiny|io::socket)[\s\S]{0,400}?\beval\b
+|\bruby\b\s+-e\b[\s\S]{0,400}?(?:open-uri|net::http|uri\.open)[\s\S]{0,400}?\beval\b
+'''
+
+# --- Decode and run -------------------------------------------------------------------
+
+[[feature]]
+id = "decode_exec"
+class = "chain"
+strong = true
+reason = "decode_run"
+anchors = ["frombase64string", "powershell", "pwsh", "base64", "b64decode", "atob"]
+pattern = '''
+frombase64string[\s\S]{0,500}?(?:\biex\b|invoke-expression|\[scriptblock\]::create|\.invoke\(|\|\s*&|start-process)
+|\b(?:iex|invoke-expression)\b[\s\S]{0,300}?frombase64string
+|\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]{0,200}?\s[-/]e
+(?:c|n|nc|nco|ncod|ncode|ncoded|ncodedc|ncodedco|ncodedcom|ncodedcomm|ncodedcomma|ncodedcomman|ncodedcommand)?
+\s+["']?[a-z0-9+/]{20,}={0,2}
+|\bbase64\s+(?:-d\b|--decode\b|-di\b)[^\n]{0,100}?\|\s*(?:sudo\s+)?(?:\S*/)?
+(?:(?:ba|z|da|k)?sh|python[0-9.]*|perl|ruby|node|osascript)\b
+|\b(?:(?:ba|z|da|k)?sh|eval)\b[^\n]{0,40}?(?:\$\(|`)\s*(?:echo|printf)\b[^\n]{0,4000}?\bbase64\s+(?:-d\b|--decode\b)
+|\bb64decode\s*\([\s\S]{0,300}?\bexec\b|\bexec\s*\(\s*(?:base64\.)?b64decode
+|\batob\s*\([\s\S]{0,200}?\beval\b|\beval\s*\(\s*atob\s*\(
+'''
+
+# --- Windows tools that fetch or start remote code -------------------------------------
+
+[[feature]]
+id = "mshta_remote"
+class = "chain"
+strong = true
+reason = "remote_tool"
+anchors = ["mshta"]
+pattern = '''
+\bmshta(?:\.exe)?["']?\s+["']?(?:https?://|\\\\|vbscript:|javascript:|about:|[a-z0-9-]+(?:\.[a-z0-9-]+)+[/:])
+'''
+
+[[feature]]
+id = "regsvr32_remote"
+class = "chain"
+strong = true
+reason = "remote_tool"
+anchors = ["regsvr32"]
+pattern = '''
+\bregsvr32(?:\.exe)?\b[^\n]{0,120}?(?:/i:\s*["']?(?:https?://|\\\\)|\s["']?\\\\[a-z0-9])
+'''
+
+[[feature]]
+id = "rundll32_remote"
+class = "chain"
+strong = true
+reason = "remote_tool"
+anchors = ["rundll32"]
+pattern = '''
+\brundll32(?:\.exe)?["']?\s+["']?(?:\\\\|javascript:|vbscript:)
+|\brundll32(?:\.exe)?\b[^\n]{0,80}?,\s*(?:openurl|fileprotocolhandler)\b[^\n]{0,40}?(?:https?://|\\\\)
+'''
+
+[[feature]]
+id = "finger_or_nslookup_pipe"
+class = "chain"
+strong = true
+reason = "remote_tool"
+anchors = ["finger", "nslookup"]
+pattern = '''
+\bfinger(?:\.exe)?\b[^\n|]{0,120}\|\s*(?:cmd|powershell|pwsh|(?:ba|z)?sh|iex)\b
+|\bnslookup(?:\.exe)?\b[^\n]{0,200}?(?:\|\s*(?:cmd|find|findstr|powershell|pwsh|iex|(?:ba|z)?sh)\b|>\s*\S+\s*&)
+'''
+
+[[feature]]
+id = "proxy_tool_remote"
+class = "chain"
+strong = true
+reason = "remote_tool"
+anchors = ["msbuild", "installutil", "regasm", "regsvcs", "msxsl", "cmstp", "odbcconf", "ieexec", "presentationhost", "hh"]
+pattern = '''
+\b(?:msbuild|installutil|regasm|regsvcs|msxsl|cmstp|odbcconf|ieexec|presentationhost)(?:\.exe)?\b[^\n]{0,200}?(?:https?://|\\\\)
+|\bhh(?:\.exe)?\s+["']?https?://
+'''
+
+[[feature]]
+id = "msiexec_remote"
+class = "chain"
+reason = "remote_tool"
+anchors = ["msiexec"]
+pattern = '''
+\bmsiexec(?:\.exe)?\b[^\n]{0,80}?[-/](?:i|package|a|j[mu]?)\s*["']?(?:https?://|\\\\)
+'''
+
+[[feature]]
+id = "lolbin_download"
+class = "chain"
+reason = "remote_tool"
+anchors = ["certutil", "bitsadmin", "certreq"]
+pattern = '''
+\bcertutil(?:\.exe)?\b[^\n]{0,80}?-(?:urlcache|verifyctl)\b
+|\bbitsadmin(?:\.exe)?\b[^\n]{0,60}?/(?:transfer|addfile)\b
+|\bcertreq(?:\.exe)?\b[^\n]{0,60}?-post\b[^\n]{0,80}?-config\s+["']?https?://
+'''
+
+[[feature]]
+id = "unc_run"
+class = "chain"
+reason = "unc_run"
+anchors = ["\\\\"]
+pattern = '''
+\\\\[a-z0-9.\-]+(?:@ssl)?(?:@\d{1,5})?\\[^\s"'<>|]+\.
+(?:exe|dll|bat|cmd|ps1|vbs|vbe|js|jse|wsf|hta|msi|lnk|cpl|scr|sct|inf|csproj|xml)\b
+|\bnet\s+use\b[^\n]{0,120}?\\\\[^\n]{0,200}?&\s*["']?[a-z]:\\[^\s"']+\.(?:cmd|bat|exe|ps1|vbs|js|hta)\b
+|\bpushd\s+["']?\\\\[^\n]{0,200}?&
+'''
+
+[[feature]]
+id = "explorer_remote"
+class = "chain"
+reason = "remote_tool"
+anchors = ["explorer", "search-ms"]
+pattern = '''
+\bexplorer(?:\.exe)?\s+["']?(?:https?://|\\\\)[^\s"']*\.(?:lnk|hta|exe|scr|vbs|js|bat|cmd|msi|library-ms|searchconnector-ms)\b
+|search-ms:[^\s"']*crumb=location:\s*(?:\\\\|https?)
+'''
+
+# --- Aggravators ---------------------------------------------------------------------
+
+[[feature]]
+id = "hidden_window"
+class = "aggravator"
+low_alone = true
+reason = "hidden_window"
+anchors = ["powershell", "pwsh", "start", "conhost", ".run("]
+pattern = '''
+\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]{0,200}?[\s'"][-/]w
+(?:i|in|ind|indo|indow|indows|indowst|indowsty|indowstyl|indowstyle)?\s+["']?
+(?:h|hi|hid|hidd|hidde|hidden|1|2|mi|min|minimized)\b
+|\bstart\s+(?:"[^"\n]*"\s+)?/min\b
+|\bconhost(?:\.exe)?\s+--headless\b
+|\.run\s*\([^)\n]{0,300},\s*0\s*[,)]
+'''
+
+[[feature]]
+id = "background_run"
+class = "aggravator"
+reason = "hidden_window"
+anchors = ["nohup", "/dev/null", "setsid", "disown", "start"]
+pattern = '''
+\bnohup\b[^\n]{0,400}&\s*(?:$|\n|;)
+|>\s*/dev/null\s+2>&1\s*&\s*(?:disown\s*)?(?:$|\n|;)
+|\bsetsid\b|\bdisown\b
+|\bstart\s+(?:"[^"\n]*"\s+)?/b\b
+'''
+
+[[feature]]
+id = "obfuscation"
+class = "aggravator"
+low_alone = true
+reason = "obfuscated"
+anchors = [":~", "$env:comspec", "$pshome[", "$shellid[", "gcm", "get-command", "gal ", "get-alias", ".(", "&(", "& (", "[char]", "-bxor", "gzipstream", "deflatestream", "io.compression", "replace", "[-1", "-join", "[string]::join", "%%", ".'", ".\"", ". '", ". \"", "&'", "&\"", "& '", "& \"", ").name", ").fullname", ").source", ").path"]
+pattern = '''
+%[a-z_][a-z0-9_]*:~-?\d+(?:,-?\d+)?%
+|\$env:comspec\[|\$pshome\[|\$shellid\[
+|\b(?:gcm|get-command|gal|get-alias)\s+[^\s|;]*\*
+|\.\s*\(\s*["'$(]
+|&\s*\(\s*["'$(\[]
+|\[char\]\s*(?:0x)?[0-9a-f]+[\s\S]{0,300}?-join
+|-bxor\b
+|\b(?:gzipstream|deflatestream|io\.compression)
+|(?:\.|-)replace\s*\(?\s*["'][^"'\n]{1,8}["']\s*,\s*(?:["']{2}|\$null)
+|\[\s*-1\s*\.\.\s*-
+|-join\s*\(?\s*\$?[a-z_]*\s*\[\s*-?\d+(?:\s*[,.]+\s*-?\d+){2,}
+|\[string\]::join\(\s*["']{2}
+|%[a-z_][a-z0-9_]*%%[a-z_][a-z0-9_]*%
+|(?:^|[\s(;|&{])[.&]\s*["'][a-z][a-z0-9.\-]*["']
+|\(\s*(?:dir|ls|gci|get-childitem|gcm|get-command)\s+[^)\n]*[*?][^)\n]*\)\s*\.\s*(?:name|fullname|source|path)\b
+'''
+
+[[feature]]
+id = "raw_ip"
+class = "aggravator"
+reason = "raw_ip"
+anchors = ["://", "\\\\", "iwr", "irm", "curl", "wget", "invoke-", "mshta"]
+pattern = '''
+(?:https?|ftp)://(?:\d{1,3}\.){3}\d{1,3}(?:[:/"'\s]|$)
+|\\\\(?:\d{1,3}\.){3}\d{1,3}\b
+|(?:https?|ftp)://(?:0x[0-9a-f]{1,8}|\d{8,10})(?:[:/"'\s]|$)
+|\b(?:iwr|irm|curl|wget|invoke-webrequest|invoke-restmethod|mshta)\b[^\n]{0,60}?\s["']?(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?/
+'''
+
+[[feature]]
+id = "webdav_share"
+class = "aggravator"
+reason = "unc_run"
+anchors = ["@ssl", "davwwwroot", "@80", "@443", "@8"]
+pattern = '''
+\\\\[a-z0-9.\-]+@(?:ssl|\d{2,5})\\|davwwwroot
+'''
+
+[[feature]]
+id = "quarantine_removal"
+class = "aggravator"
+reason = "quarantine_removal"
+anchors = ["xattr", "spctl"]
+pattern = '''
+\bxattr\s+-[a-z]*[cd][a-z]*\b|\bspctl\s+--master-disable\b
+'''
+
+# --- Lures and hiding ----------------------------------------------------------------
+
+[[feature]]
+id = "lure_comment"
+class = "lure"
+reason = "lure_comment"
+anchors = ["robot", " bot", "human", "verification", "captcha", "ray id", "rayid", "cloudflare", "press enter", "confirmation"]
+pattern = '''
+(?:\bnot\s+a\s+(?:robot|bot)\b|\bi\s*(?:am|'?m)\s+(?:a\s+)?human\b|\bhuman\s+verification\b
+|\bverif(?:y|ied|ying)\s+(?:that\s+)?you(?:'re|\s+are)\s+(?:a\s+)?human\b
+|\b(?:verification|confirmation)\s+(?:id|code|hash|token|key)\b[\s:#=\-]*[a-z0-9-]{3,}
+|\bray\s*id\b[\s:#=\-]*[a-z0-9]{4,}
+|\bre-?captcha\s+(?:verification|check|passed|complete|completed|id|code)\b
+|\bcaptcha\s+(?:verification|check|passed|complete|completed|id|code|solved)\b
+|\bcloudflare\s+(?:verification|check|security\s+check|human\s+check)\b
+|\bpress\s+enter\s+to\s+(?:verify|complete\s+(?:the\s+)?verification|confirm\s+you)\b
+|\bverification\s+(?:complete|completed|successful|passed|step)\b|\bbot\s+check\b|\banti-?bot\s+check\b)
+'''
+
+[[feature]]
+id = "padded_comment"
+class = "padding"
+reason = "padded_comment"
+anchors = ["  ", "\t"]
+pattern = '''
+(?m)^([^\n]*?\S)[ \t]{20,}(?:#|::|rem\b|//|<#)
+|^([^\n]*?\S)[ \t]{60,}\S
+'''
+
+# --- Tools on their own --------------------------------------------------------------
+
+[[feature]]
+id = "abused_tool"
+class = "tool"
+reason = "abused_tool"
+anchors = ["mshta", "wscript", "cscript", "regsvr32", "cmstp", "odbcconf", "forfiles", "conhost", "installutil", "regasm", "regsvcs", "msxsl", "ieexec", "syncappvpublishingserver", "mavinject", "wmic", "osascript", "rundll32", "stricthostkeychecking"]
+pattern = '''
+\bmshta(?:\.exe)?\b
+|\b(?:wscript|cscript)(?:\.exe)?\b[^\n]{0,120}?\.(?:vbs|vbe|js|jse|wsf|wsh)\b
+|\bregsvr32(?:\.exe)?\b[^\n]{0,60}?\s[-/][si]\b
+|\bcmstp(?:\.exe)?\b[^\n]{0,60}?\s/(?:au|s|ni)\b
+|\bodbcconf(?:\.exe)?\b[^\n]{0,60}?\s[-/]a\b
+|\bforfiles(?:\.exe)?\b[^\n]{0,200}?\s/c\b
+|\bconhost(?:\.exe)?\s+--headless\b
+|\b(?:installutil|regasm|regsvcs|msxsl|ieexec|syncappvpublishingserver|mavinject)(?:\.exe)?\b
+|\bwmic(?:\.exe)?\b[^\n]{0,80}?\bprocess\s+call\s+create\b
+|\bosascript\b[^\n]{0,40}?-e\b[^\n]{0,400}?do\s+shell\s+script\b
+|\brundll32(?:\.exe)?\b[^\n]{0,80}?(?:javascript:|\\\\)
+|\bssh\b[^\n]{0,200}?stricthostkeychecking=no[^\n]{0,200}?\s-r\s*["']?(?:\d|[a-z0-9.]+:\d)
+'''
+
+# --- Installers that the projects themselves publish ---------------------------------
+# A download-and-run command whose every address starts with one of these prefixes, and
+# which is visible on the page, is copied without any message. Each prefix is a host,
+# or a host and the start of a path for hosts where anyone can publish
+# (raw.githubusercontent.com). Matching ignores case and the scheme.
+
+[[installer]]
+name = "rustup"
+prefixes = ["sh.rustup.rs", "win.rustup.rs", "static.rust-lang.org/rustup/"]
+
+[[installer]]
+name = "Homebrew"
+prefixes = ["raw.githubusercontent.com/homebrew/install/"]
+
+[[installer]]
+name = "nvm"
+prefixes = ["raw.githubusercontent.com/nvm-sh/nvm/"]
+
+[[installer]]
+name = "Oh My Zsh"
+prefixes = ["raw.githubusercontent.com/ohmyzsh/ohmyzsh/", "install.ohmyz.sh"]
+
+[[installer]]
+name = "Bun"
+prefixes = ["bun.sh/install", "bun.com/install"]
+
+[[installer]]
+name = "Deno"
+prefixes = ["deno.land/install.", "deno.land/x/install/", "deno.com/install."]
+
+[[installer]]
+name = "uv and Ruff (Astral)"
+prefixes = ["astral.sh/uv/", "astral.sh/ruff/"]
+
+[[installer]]
+name = "Scoop"
+prefixes = ["get.scoop.sh"]
+
+[[installer]]
+name = "Chocolatey"
+prefixes = ["community.chocolatey.org/install.ps1", "chocolatey.org/install.ps1"]
+
+[[installer]]
+name = "Claude Code"
+prefixes = ["claude.ai/install.sh", "claude.ai/install.ps1", "claude.ai/install.cmd"]
+
+[[installer]]
+name = "Docker"
+prefixes = ["get.docker.com", "test.docker.com"]
+
+[[installer]]
+name = "Ollama"
+prefixes = ["ollama.com/install.sh", "ollama.com/install.ps1"]
+
+[[installer]]
+name = "K3s"
+prefixes = ["get.k3s.io"]
+
+[[installer]]
+name = "Tailscale"
+prefixes = ["tailscale.com/install.sh"]
+
+[[installer]]
+name = "mise"
+prefixes = ["mise.run", "mise.jdx.dev/install.sh"]
+
+[[installer]]
+name = "Starship"
+prefixes = ["starship.rs/install.sh"]
+
+[[installer]]
+name = "Microsoft"
+prefixes = ["aka.ms/installazureclideb", "aka.ms/install-powershell.ps1", "aka.ms/install-artifacts-credprovider.ps1", "dot.net/v1/dotnet-install."]
+
+[[installer]]
+name = "fnm"
+prefixes = ["fnm.vercel.app/install"]
+
+[[installer]]
+name = "pnpm"
+prefixes = ["get.pnpm.io/install."]
+
+[[installer]]
+name = "code-server"
+prefixes = ["code-server.dev/install.sh"]
+
+[[installer]]
+name = "Nix"
+prefixes = ["nixos.org/nix/install", "install.determinate.systems/nix"]
+
+[[installer]]
+name = "SDKMAN!"
+prefixes = ["get.sdkman.io"]
+
+[[installer]]
+name = "Julia"
+prefixes = ["install.julialang.org"]
+
+[[installer]]
+name = "Cursor"
+prefixes = ["cursor.com/install"]
+
+[[installer]]
+name = "Poetry"
+prefixes = ["install.python-poetry.org"]
+
+[[installer]]
+name = "NodeSource"
+prefixes = ["deb.nodesource.com/setup_", "rpm.nodesource.com/setup_"]
+
+[[installer]]
+name = "Volta"
+prefixes = ["get.volta.sh"]
+
+[[installer]]
+name = "pyenv"
+prefixes = ["pyenv.run", "raw.githubusercontent.com/pyenv/pyenv-installer/"]
+
+[[installer]]
+name = "Helm"
+prefixes = ["raw.githubusercontent.com/helm/helm/"]
+
+[[installer]]
+name = "RVM"
+prefixes = ["get.rvm.io"]
+
+[[installer]]
+name = "Pi-hole"
+prefixes = ["install.pi-hole.net"]

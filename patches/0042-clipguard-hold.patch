@@ -1,0 +1,136 @@
+Whisper: hold, check and read-back for content clipboard writes
+
+What: nsBaseClipboard::SetDataImpl, the one place every content clipboard write passes in
+the parent process, calls mozilla::ClipboardGuard::Guard() for the first
+(content-initiated) pass. The guard (new files in toolkit/components/clipguard) classifies
+the text with the clipguard Rust crate and either lets the write through, removes a
+trailing line break, or replaces it with a harmless placeholder while holding the real
+text for "Copy anyway". The clipboard read paths (GetDataIfSmallerThanNative,
+GetDataSnapshot, GetDataSnapshotSync) also ask the guard first: while a block is in effect,
+a reader of the same origin as the writer reads back the page's own written text instead of
+the placeholder, so the page cannot tell it was blocked; every other origin gets the
+placeholder. nsBaseClipboard grants the guard and its event object friendship so they can
+commit a held write through the existing SetDataImpl(aCheckContentAnalysis = false) path.
+A real content write forgets the read-back override.
+
+Engine-update contract (re-check on every Firefox rebase; the guard reaches into private
+clipboard internals, so a change here can break it silently -- see the matching list and
+the compile-time/runtime assertions in toolkit/components/clipguard/ClipboardGuard.cpp):
+  1. SetDataImpl still takes aCheckContentAnalysis, and with it false neither re-runs the
+     guard nor Firefox's content-analysis copy check, and commits synchronously.
+  2. The write completion runs exactly once; the Handled path runs it and returns NS_OK
+     without finish().
+  3. PendingCopy / CancelPendingCopy and the mMutatingNativeClipboard re-entrancy guard
+     still exist and behave as in 159 (bug 2057113, bug 2067877 last touched this).
+  4. The three read methods above still carry the requesting window/principal.
+Only a CI build and the smoke test exercise (2) and (3) end to end.
+---
+--- a/widget/nsBaseClipboard.h
++++ b/widget/nsBaseClipboard.h
+@@ -29,11 +29,21 @@
+ class WindowContext;
+ }  // namespace mozilla::dom
+ 
++namespace mozilla {
++// Whisper's ClickFix protection calls the private SetDataImpl to commit a held copy or
++// the blocked-copy placeholder (toolkit/components/clipguard).
++class ClipboardGuard;
++class ClipguardEvent;
++}  // namespace mozilla
++
+ /**
+  * A base clipboard class for all platform, so that they can share the same
+  * implementation.
+  */
+ class nsBaseClipboard : public nsIClipboard {
++  friend class mozilla::ClipboardGuard;
++  friend class mozilla::ClipguardEvent;
++
+  public:
+   explicit nsBaseClipboard(
+       const mozilla::dom::ClipboardCapabilities& aClipboardCaps);
+--- a/widget/nsBaseClipboard.cpp
++++ b/widget/nsBaseClipboard.cpp
+@@ -5,6 +5,7 @@
+ #include "nsBaseClipboard.h"
+ 
+ #include "ContentAnalysis.h"
++#include "mozilla/ClipboardGuard.h"
+ #include "mozilla/AutoRestore.h"
+ #include "mozilla/Components.h"
+ #include "mozilla/ErrorResult.h"
+@@ -557,6 +558,21 @@
+   // verdict for it.
+   CancelPendingCopy(aWhichClipboard, NS_ERROR_ABORT);
+ 
++  // Whisper's ClickFix protection. Only the first, content-initiated pass is checked
++  // (aCheckContentAnalysis is true); the internal commit that writes an allowed copy
++  // and the blocked-copy placeholder pass false and skip it, as content analysis does.
++  // When the guard handles the write it has already run aCompletion and put either the
++  // page's text or the placeholder on the clipboard, so there is nothing more to do.
++  if (aCheckContentAnalysis) {
++    mozilla::ClipboardGuard::ForgetReadback(aWhichClipboard);
++  }
++  if (aCheckContentAnalysis && mozilla::ClipboardGuard::IsEnabled() &&
++      mozilla::ClipboardGuard::Guard(this, aTransferable, aOwner, aWhichClipboard,
++                                     aWindowContext, aCompletion) ==
++          mozilla::ClipboardGuard::Result::Handled) {
++    return NS_OK;
++  }
++
+   // Ask Content Analysis whether web content is permitted to copy this data.
+   // The check is asynchronous on this (the parent's main) thread, as the agent
+   // may be slow, so the clipboard is left as it was until the verdict arrives.
+@@ -695,6 +711,15 @@
+     return NS_ERROR_FAILURE;
+   }
+ 
++  // Whisper ClickFix: the page that was blocked reads its own text back, not the
++  // placeholder, so it cannot tell it was blocked. Only that same page (same top
++  // browsing context and origin) matches; every other reader falls through to the real
++  // clipboard below.
++  if (mozilla::ClipboardGuard::FillReadbackIfSameOrigin(
++          aWhichClipboard, aWindowContext, nullptr, aTransferable)) {
++    return NS_OK;
++  }
++
+   if (!aThreshold &&
+       mozilla::StaticPrefs::widget_clipboard_use_cached_data_enabled()) {
+     if (NS_SUCCEEDED(
+@@ -849,6 +874,18 @@
+     return NS_ERROR_FAILURE;
+   }
+ 
++  // Whisper ClickFix: the page that was blocked reads its own text back (see
++  // GetDataIfSmallerThanNative), so a read-back probe gets what the page wrote, not the
++  // placeholder.
++  if (nsCOMPtr<nsITransferable> ownText =
++          mozilla::ClipboardGuard::TakeReadbackTransferable(
++              aWhichClipboard, aRequestingWindowContext, aRequestingPrincipal)) {
++    nsCOMPtr<nsIClipboardDataSnapshot> snapshot =
++        new ClipboardPopulatedDataSnapshot(ownText);
++    aCallback->OnSuccess(snapshot);
++    return NS_OK;
++  }
++
+   // We want to disable security check for automated tests that have the pref
+   // set to true, or extension that have clipboard read permission.
+   if (mozilla::StaticPrefs::
+@@ -989,6 +1026,17 @@
+     return NS_ERROR_FAILURE;
+   }
+ 
++  // Whisper ClickFix: same-origin read-back gets the page's own text (see
++  // GetDataIfSmallerThanNative).
++  if (nsCOMPtr<nsITransferable> ownText =
++          mozilla::ClipboardGuard::TakeReadbackTransferable(
++              aWhichClipboard, aRequestingWindowContext, nullptr)) {
++    RefPtr<ClipboardPopulatedDataSnapshot> snapshot =
++        new ClipboardPopulatedDataSnapshot(ownText);
++    snapshot.forget(_retval);
++    return NS_OK;
++  }
++
+   if (nsCOMPtr<nsIClipboardDataSnapshot> clipboardDataSnapshot =
+           MaybeCreateGetRequestFromClipboardCache(aFlavorList, aWhichClipboard,
+                                                   aRequestingWindowContext)) {

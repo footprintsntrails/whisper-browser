@@ -1,0 +1,42 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 4 -*-
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Whisper's ClickFix protection. The decision logic is the clipguard Rust crate (rust/,
+# linked into libxul through gkrust-shared); this directory is the C++ that
+# nsBaseClipboard calls and the event object the browser interface listens for.
+
+with Files("**"):
+    BUG_COMPONENT = ("Whisper", "ClickFix protection")
+
+XPIDL_SOURCES += [
+    "nsIClipguardEvent.idl",
+]
+
+XPIDL_MODULE = "clipguard"
+
+EXPORTS.mozilla += [
+    "ClipboardGuard.h",
+    "ClipboardGuardSource.h",
+    "ClipguardEvent.h",
+]
+
+# cbindgen writes mozilla/Clipguard.h from the clipguard_ffi crate (ffi/).
+if CONFIG["COMPILE_ENVIRONMENT"]:
+    EXPORTS.mozilla += [
+        "!Clipguard.h",
+    ]
+    CbindgenHeader(
+        "Clipguard.h",
+        inputs=["/toolkit/components/clipguard/ffi"],
+    )
+
+# Plain SOURCES, not UNIFIED_SOURCES: the two files each open `namespace mozilla` with
+# their own `using` declarations, so keep their translation units separate.
+SOURCES += [
+    "ClipboardGuard.cpp",
+    "ClipguardEvent.cpp",
+]
+
+FINAL_LIBRARY = "xul"

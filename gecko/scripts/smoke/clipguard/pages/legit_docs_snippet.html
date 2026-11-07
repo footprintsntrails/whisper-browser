@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Docs installer snippet (shown), execCommand</title>
+<script src="common.js"></script></head>
+<body><h1>Docs installer snippet (shown), execCommand</h1>
+<pre id="cmd">curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh</pre>
+<button id="go">Copy</button>
+<script>document.getElementById("go").addEventListener("click",()=>window.__clipguard.execCopy(document.getElementById("cmd").textContent));</script>
+</body></html>

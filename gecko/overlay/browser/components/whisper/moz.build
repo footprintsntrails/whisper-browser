@@ -48,3 +48,11 @@ MOZ_SRC_FILES += [
     "WhisperUI.sys.mjs",
     "WhisperUrlbar.sys.mjs",
 ]
+
+# --- Whisper ClickFix protection (the browser-interface half; the decision logic is
+#     toolkit/components/clipguard). ---
+MOZ_SRC_FILES += [
+    "WhisperClipguard.sys.mjs",
+    "WhisperClipguardChild.sys.mjs",
+    "WhisperClipguardParent.sys.mjs",
+]

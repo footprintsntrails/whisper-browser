@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/xtask"]
+# gecko/overlay/toolkit/components/clipguard/rust is the ClickFix check that is built
+# into the browser; it is a member here so `cargo test` and `cargo clippy` cover it.
+# Its C ABI (../ffi) needs Firefox's tree and is built only there.
+members = ["crates/xtask", "gecko/overlay/toolkit/components/clipguard/rust"]
+exclude = ["gecko/overlay/toolkit/components/clipguard/ffi"]
 
 [workspace.package]
 version = "0.2.0"

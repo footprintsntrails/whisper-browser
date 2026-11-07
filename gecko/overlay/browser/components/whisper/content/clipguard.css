@@ -1,0 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* The icon for Whisper's ClickFix doorhanger and its address-bar indicator (the LOW
+ * case). A clipboard with a warning tint, from the icons Firefox already ships. Loaded
+ * as an agent sheet by WhisperClipguard so it applies in every browser window. */
+
+.popup-notification-icon.whisper-clipguard-icon,
+.notification-anchor-icon.whisper-clipguard-icon {
+  list-style-image: url("chrome://global/skin/icons/clipboard.svg");
+  -moz-context-properties: fill;
+  fill: var(--toolbarbutton-icon-fill-attention, light-dark(#0061e0, #73a7ff));
+}
