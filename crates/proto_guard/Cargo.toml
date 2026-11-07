@@ -1,0 +1,14 @@
+[package]
+name = "proto_guard"
+description = "Whisper's rules for links that open other programs (external protocols): which schemes are never opened, and the program a command line names."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

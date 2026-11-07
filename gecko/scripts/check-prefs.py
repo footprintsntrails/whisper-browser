@@ -12,7 +12,9 @@ browser/components/whisper/0-whisper.js and security/0-whisper-security.js):
   2. a Firefox pref (anything not under "whisper.") still exists in FIREFOX_SRC: it is
      declared in modules/libpref/init/StaticPrefList.yaml, set in one of Firefox's own
      pref files, or read by name somewhere in the code (also as a branch plus a name,
-     as "doh-rollout" + "trr-selection.enabled"). A pref Mozilla removed would
+     as "doh-rollout" + "trr-selection.enabled"; or, when the manifest gives a "family",
+     that prefix appears in the code, as "network.protocol-handler.external." + any
+     scheme). A pref Mozilla removed would
      otherwise be set forever and do nothing, while its comment still says it protects.
      A pref the manifest marks as "gone" (with the Firefox version) is reported but does
      not fail, so a known leftover can wait for its file's owner; one marked gone that
@@ -72,8 +74,10 @@ def split_candidates(name):
             yield ".".join(parts[:i]), rest
 
 
-def firefox_names(src, wanted):
-    """The wanted pref names that Firefox 'knows': StaticPrefList, pref files, code."""
+def firefox_names(src, wanted, families=None):
+    """The wanted pref names that Firefox 'knows': StaticPrefList, pref files, code.
+    `families` maps a name to a prefix that the code builds names from."""
+    families = families or {}
     known = set()
     pieces = {}
     for name in wanted:
@@ -81,6 +85,8 @@ def firefox_names(src, wanted):
             pieces.setdefault(branch, set()).add(name)
             pieces.setdefault(branch + ".", set()).add(name)
             pieces.setdefault(rest, set()).add(name)
+    for name, family in families.items():
+        pieces.setdefault(family, set()).add(name)
     found_pieces = set()
     spl = os.path.join(src, "modules", "libpref", "init", "StaticPrefList.yaml")
     for line in open(spl, encoding="utf-8"):
@@ -106,6 +112,9 @@ def firefox_names(src, wanted):
                     if word in pieces:
                         found_pieces.add(word)
     for name in wanted - known:
+        if families.get(name) in found_pieces:
+            known.add(name)
+            continue
         if any((branch in found_pieces or branch + "." in found_pieces) and rest in found_pieces
                for branch, rest in split_candidates(name)):
             known.add(name)
@@ -159,7 +168,8 @@ def main():
         if name not in names:
             problems.append(f"{os.path.relpath(manifest_path, REPO)}: {name} is not set in any pref file")
     firefox = {n for n in names if not n.startswith("whisper.")}
-    known = firefox_names(src, firefox)
+    families = {n: e["family"] for n, e in manifest["prefs"].items() if e.get("family")}
+    known = firefox_names(src, firefox, families)
     warnings = []
     for p in prefs:
         gone = manifest["prefs"].get(p["name"], {}).get("gone")

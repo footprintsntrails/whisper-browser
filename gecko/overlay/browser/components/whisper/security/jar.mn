@@ -7,6 +7,10 @@ browser.jar:
     content/browser/whisper/security/guard-dialog.mjs     (content/guard-dialog.mjs)
     content/browser/whisper/security/guard-dialog.css     (content/guard-dialog.css)
     content/browser/whisper/security/hold-button.mjs      (content/hold-button.mjs)
+    content/browser/whisper/security/guard-worker.js      (content/guard-worker.js)
+    content/browser/whisper/security/program-dialog.mjs   (content/program-dialog.mjs)
+# Built from crates/wcore_wasm by gecko/scripts/build-wasm.sh (prepare.sh puts it here).
+    content/browser/whisper/security/wcore.wasm           (content/wcore.wasm)
 
 # English only for now, shipped as-is for every locale (as whisper.ftl).
 [localization] @AB_CD@.jar:

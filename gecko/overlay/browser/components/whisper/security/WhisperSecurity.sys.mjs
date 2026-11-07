@@ -15,6 +15,8 @@
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  WhisperDownloadGuard:
+    "moz-src:///browser/components/whisper/security/WhisperDownloadGuard.sys.mjs",
   WhisperAddressMemory:
     "moz-src:///browser/components/whisper/security/WhisperAddressMemory.sys.mjs",
 });
@@ -41,6 +43,7 @@ export const WhisperSecurity = {
     }
     this._initialized = true;
     guarded("input guard", () => this._registerInputGuard());
+    guarded("download check", () => lazy.WhisperDownloadGuard.init());
   },
 
   onWindowDelayedStartup(_win) {},
@@ -81,5 +84,6 @@ export const WhisperSecurity = {
   /** For Panic and Burn: what the input guards hold in memory. */
   forgetInputGuardState() {
     lazy.WhisperAddressMemory.forget();
+    lazy.WhisperDownloadGuard.forgetSession();
   },
 };

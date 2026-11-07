@@ -138,10 +138,14 @@ function address() {
   return safe;
 }
 
+// The safe choice. SubDialog asks the document where its focus goes
+// (subDialogSetDefaultFocus) instead of picking the first focusable element.
+let focus = null;
+document.subDialogSetDefaultFocus = () => focus?.focus();
+
 async function main() {
   // Built at once (module scripts run after parsing, before the load event), so the
   // content is there when the dialog box first measures it.
-  let focus = null;
   if (args.kind == "seed") {
     focus = seed();
   } else if (args.kind == "address") {

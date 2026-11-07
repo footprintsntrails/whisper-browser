@@ -30,10 +30,16 @@ jobs:
       - uses: ./.github/actions/rust
         with:
           cache-key: lint
+          # The guard engine (crates/wcore_wasm) runs in the browser as WebAssembly.
+          targets: wasm32-unknown-unknown
       - name: rustfmt
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: The guard engine as WebAssembly (clippy for wasm32, build, no imports)
+        run: |
+          cargo clippy -p wcore_wasm --target wasm32-unknown-unknown --locked -- -D warnings
+          gecko/scripts/build-wasm.sh "$RUNNER_TEMP/wcore.wasm"
       - name: Secrets, personal data and local paths
         run: cargo xtask scan
       - name: actionlint (with shellcheck for every run step)

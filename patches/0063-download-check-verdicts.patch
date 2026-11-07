@@ -1,0 +1,110 @@
+Whisper: show why Whisper's download check held a file
+
+What: lets a verdict string of Whisper's own download check ("WhisperHeld:<reason>")
+through DownloadCore unchanged; the downloads panel and about:downloads show Whisper's
+title and reason for it (WhisperDownloadGuard.describe) and offer "Allow download" and
+"Remove file" as for an uncommon file; the confirmation when allowing it does not call
+the file malware.
+Why: the check itself plugs into Firefox's Integration overrides (no patch), but
+Firefox maps every verdict it does not know to "" and its views throw on an unknown
+verdict, so without these lines a held file would show no reason at all and could
+not be allowed.
+---
+diff --git a/browser/components/downloads/DownloadsCommon.sys.mjs b/browser/components/downloads/DownloadsCommon.sys.mjs
+--- a/browser/components/downloads/DownloadsCommon.sys.mjs
++++ b/browser/components/downloads/DownloadsCommon.sys.mjs
+@@ -41,6 +41,8 @@
+   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
+   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
+   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
++  WhisperDownloadGuard:
++    "moz-src:///browser/components/whisper/security/WhisperDownloadGuard.sys.mjs",
+ });
+ 
+ XPCOMUtils.defineLazyServiceGetters(lazy, {
+@@ -734,7 +736,14 @@
+ 
+     let message;
+     let tip = s.unblockTip2;
++    // Whisper: a file its own check held is not called malware.
++    if (lazy.WhisperDownloadGuard.isHeld(verdict)) {
++      message = lazy.WhisperDownloadGuard.unblockMessage(verdict);
++      verdict = null;
++    }
+     switch (verdict) {
++      case null:
++        break;
+       case lazy.Downloads.Error.BLOCK_VERDICT_UNCOMMON:
+         message = s.unblockTypeUncommon2;
+         break;
+@@ -1378,6 +1387,12 @@
+         case lazy.Downloads.Error.BLOCK_VERDICT_UNCOMMON:
+           attention = DownloadsCommon.ATTENTION_INFO;
+           break;
++        // Whisper: a file its own check held.
++        case lazy.WhisperDownloadGuard.isHeld(
++          download.error.reputationCheckVerdict
++        ) && download.error.reputationCheckVerdict:
++          attention = DownloadsCommon.ATTENTION_WARNING;
++          break;
+         case lazy.Downloads.Error.BLOCK_VERDICT_POTENTIALLY_UNWANTED: // fall-through
+         case lazy.Downloads.Error.BLOCK_VERDICT_INSECURE:
+         case lazy.Downloads.Error.BLOCK_VERDICT_DOWNLOAD_SPAM:
+diff --git a/browser/components/downloads/DownloadsViewUI.sys.mjs b/browser/components/downloads/DownloadsViewUI.sys.mjs
+--- a/browser/components/downloads/DownloadsViewUI.sys.mjs
++++ b/browser/components/downloads/DownloadsViewUI.sys.mjs
+@@ -20,6 +20,8 @@
+     "moz-src:///browser/components/downloads/DownloadsCommon.sys.mjs",
+   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+   UrlbarShared: "chrome://browser/content/urlbar/UrlbarShared.mjs",
++  WhisperDownloadGuard:
++    "moz-src:///browser/components/whisper/security/WhisperDownloadGuard.sys.mjs",
+ });
+ 
+ XPCOMUtils.defineLazyServiceGetter(
+@@ -814,7 +816,12 @@
+           } else {
+             // This download was blocked temporarily by reputation check. In the
+             // Downloads View, the interface depends on the threat severity.
+-            switch (verdict) {
++            // (Whisper: a file its own check held can be allowed, as here.)
++            switch (
++              lazy.WhisperDownloadGuard.isHeld(verdict)
++                ? lazy.Downloads.Error.BLOCK_VERDICT_UNCOMMON
++                : verdict
++            ) {
+               case lazy.Downloads.Error.BLOCK_VERDICT_UNCOMMON:
+               case lazy.Downloads.Error.BLOCK_VERDICT_INSECURE:
+               case lazy.Downloads.Error.BLOCK_VERDICT_POTENTIALLY_UNWANTED:
+@@ -941,6 +948,12 @@
+     ) {
+       return [null, null];
+     }
++    // Whisper: why its own download check held the file.
++    if (
++      lazy.WhisperDownloadGuard.isHeld(this.download.error.reputationCheckVerdict)
++    ) {
++      return lazy.WhisperDownloadGuard.describe(this.download);
++    }
+     switch (this.download.error.reputationCheckVerdict) {
+       case lazy.Downloads.Error.BLOCK_VERDICT_UNCOMMON:
+         return [s.blockedUncommon2, [s.unblockTypeUncommon2, s.unblockTip2]];
+diff --git a/toolkit/components/downloads/DownloadCore.sys.mjs b/toolkit/components/downloads/DownloadCore.sys.mjs
+--- a/toolkit/components/downloads/DownloadCore.sys.mjs
++++ b/toolkit/components/downloads/DownloadCore.sys.mjs
+@@ -2898,7 +2898,14 @@
+       caPromise,
+     ]).then(hasMostRestrictiveResult);
+ 
+-    let downloadErrorVerdict = kVerdictMap[permissionResult.verdict] || "";
++    // Whisper: its own download check returns a verdict of its own
++    // ("WhisperHeld:<reason>", browser/components/whisper/security/
++    // WhisperDownloadGuard.sys.mjs), kept as it is.
++    let downloadErrorVerdict =
++      kVerdictMap[permissionResult.verdict] ||
++      (String(permissionResult.verdict).startsWith("WhisperHeld:")
++        ? permissionResult.verdict
++        : "");
+     permissionResult.verdict = downloadErrorVerdict;
+     if (permissionResult.shouldBlock) {
+       if (permissionResult.check === REPUTATION_CHECK) {

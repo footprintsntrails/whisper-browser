@@ -7,9 +7,10 @@ in an unpacked Linux package, so a change can be smoke-tested in minutes
 (.github/workflows/gecko-ui-quick.yml). Release packages always come from a full build.
 
 Usage: repack-ui.py APP_DIR      (the folder that holds the `whisper` program)
-       repack-ui.py APP_DIR --wasm FILE  (also the guard engine built by
-                                     gecko/scripts/build-wasm.sh; without it the
-                                     package keeps the engine it has)
+       repack-ui.py APP_DIR [--wasm FILE | --no-wasm]
+                                    (the guard engine: by default built now with
+                                     gecko/scripts/build-wasm.sh; --wasm takes a built
+                                     one, --no-wasm keeps the package's own)
        repack-ui.py --check FILE... (exit 0 if a change to these repository files
                                      reaches the browser completely by repacking:
                                      each is one of the files below, or changes
@@ -24,6 +25,7 @@ the full build (gecko.yml).
 
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -90,9 +92,12 @@ def can_repack(changed):
     """The changed repository files that a repack cannot bring into a build."""
     sources = {f"gecko/overlay/{src}" for _, _, src in FILES + security_files()}
     sources.add(f"gecko/overlay/{SECURITY_MANIFEST}")
+    # The guard engine is rebuilt by every repack.
+    engine = ("crates/dl_guard/", "crates/proto_guard/", "crates/wcore_wasm/", "gecko/scripts/build-wasm.sh",
+              "Cargo.lock")
     blocking = []
     for path in changed:
-        if path in sources or not path.startswith(BUILT) or path.startswith(NOT_BUILT):
+        if path in sources or path.startswith(engine) or not path.startswith(BUILT) or path.startswith(NOT_BUILT):
             continue
         blocking.append(path)
     return blocking
@@ -183,6 +188,9 @@ def main():
     wasm = None
     if "--wasm" in sys.argv:
         wasm = sys.argv[sys.argv.index("--wasm") + 1]
+    elif "--no-wasm" not in sys.argv:
+        wasm = os.path.join(tempfile.mkdtemp(prefix="whisper-wasm-"), "wcore.wasm")
+        subprocess.run([os.path.join(REPO, "gecko", "scripts", "build-wasm.sh"), wasm], check=True)
     # Whisper Canary's branding is the release one with gecko/variants/canary/branding
     # over it (prepare.sh); take its own version of a branding file where it has one.
     with open(os.path.join(app, "application.ini"), encoding="utf-8") as f:

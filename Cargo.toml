@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/whisper", "crates/xtask"]
+members = [
+  "crates/whisper",
+  "crates/xtask",
+  "crates/dl_guard",
+  "crates/proto_guard",
+  "crates/wcore_wasm",
+]
 default-members = ["crates/whisper"]
 
 [workspace.package]

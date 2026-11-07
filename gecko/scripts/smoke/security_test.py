@@ -16,6 +16,13 @@ is driven over Marionette. Checks:
                reaches the page; normal text does; holding the button allows one field
   address      a pasted address that differs from the copied one is stopped and both
                are shown; pasting the copied address itself passes
+  programs     links to blocked schemes (ms-*, search-ms) and to a program that is not
+               installed do nothing, and nothing opens without a click; a click on a
+               link to an installed program asks, naming the program and its path
+  downloads    the guard engine (Rust as WebAssembly in a worker) runs; a disc image,
+               a disguised program, a program named as a picture and a ZIP holding a
+               program are held (no file in Downloads), a PDF is not; a held file is
+               only there once allowed
 
 Writes OUT/security-report.{json,md} and screenshots; exits 1 if a check fails.
 """
@@ -93,6 +100,58 @@ def start_server(routes):
     srv = Server(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
+
+
+def make_pe():
+    pe = bytearray(512)
+    pe[:2] = b"MZ"
+    pe[0x3C] = 0x80
+    pe[0x80:0x84] = b"PE\0\0"
+    return bytes(pe)
+
+
+def make_zip(names):
+    """A real ZIP (stored, no compression) with these file names."""
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for n in names:
+            z.writestr(n, b"x")
+    return buf.getvalue()
+
+
+def make_iso(names):
+    """A minimal ISO 9660 image whose root holds these (empty) files."""
+    iso = bytearray(20 * 2048)
+    pvd = 16 * 2048
+    iso[pvd] = 1
+    iso[pvd + 1:pvd + 6] = b"CD001"
+    iso[pvd + 128:pvd + 130] = (2048).to_bytes(2, "little")
+    iso[pvd + 156 + 2:pvd + 156 + 6] = (18).to_bytes(4, "little")
+    iso[pvd + 156 + 10:pvd + 156 + 14] = (2048).to_bytes(4, "little")
+    iso[17 * 2048] = 255
+    iso[17 * 2048 + 1:17 * 2048 + 6] = b"CD001"
+    at = 18 * 2048
+    for raw in [b"\0", b"\1"] + [f"{n};1".encode() for n in names]:
+        length = 33 + len(raw) + (len(raw) + 1) % 2
+        iso[at] = length
+        iso[at + 32] = len(raw)
+        iso[at + 33:at + 33 + len(raw)] = raw
+        at += length
+    return bytes(iso)
+
+
+def download_routes():
+    def attach(name, body, mime="application/octet-stream"):
+        return (200, {"Content-Type": mime, "Content-Disposition": f'attachment; filename="{name}"'}, body)
+    return {
+        "/dl/report.pdf": attach("report.pdf", b"%PDF-1.4\n%Whisper test\n", "application/pdf"),
+        "/dl/disk.iso": attach("disk.iso", make_iso(["INVOICE.LNK", "README.TXT"])),
+        "/dl/invoice.pdf.exe": attach("invoice.pdf.exe", make_pe()),
+        "/dl/photo.jpg": attach("photo.jpg", make_pe(), "image/jpeg"),
+        "/dl/tool.zip": attach("tool.zip", make_zip(["tool/setup.exe", "tool/readme.txt"]), "application/zip"),
+    }
 
 
 def parse_prefs(path):
@@ -230,6 +289,91 @@ if (id) {
   document.getElementById(id).focus();
 }
 return true;
+"""
+
+ENGINE_JS = r"""
+// The guard engine: Rust compiled to WebAssembly, run in a ChromeWorker.
+const { WhisperGuardEngine } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/whisper/security/WhisperGuardEngine.sys.mjs");
+const started = Date.now();
+const a = await WhisperGuardEngine.proto("search-ms");
+const b = await WhisperGuardEngine.proto("zoommtg");
+return { blocked: a.tier, asked: b.tier, ms: Date.now() - started };
+"""
+
+DOWNLOAD_JS = r"""
+// Download a file through Firefox's download manager (the same verdict step as a
+// click on a link: DownloadCopySaver and DownloadLegacySaver share it), into the
+// downloads folder with a ".part" file, and wait until it stops.
+const [url, name] = args;
+const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
+const dir = await Downloads.getPreferredDownloadsDirectory();
+const path = PathUtils.join(dir, name);
+const d = await Downloads.createDownload({ source: url, target: { path, partFilePath: path + ".part" } });
+const list = await Downloads.getList(Downloads.ALL);
+await list.add(d);
+try {
+  await d.start();
+} catch (e) {
+  // A held download ends with an error that says so.
+}
+const exists = async p => !!p && (await IOUtils.exists(p)) && (await IOUtils.stat(p)).size > 0;
+return {
+  succeeded: d.succeeded,
+  hasBlockedData: d.hasBlockedData,
+  verdict: d.error?.reputationCheckVerdict ?? null,
+  targetHasData: await exists(d.target.path),
+  partHasData: await exists(d.target.partFilePath),
+};
+"""
+
+DESCRIBE_JS = r"""
+// What the downloads panel would say about the last held download, then allow it.
+const [allow] = args;
+const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
+const { WhisperDownloadGuard } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/whisper/security/WhisperDownloadGuard.sys.mjs");
+const list = await Downloads.getList(Downloads.ALL);
+const held = (await list.getAll()).filter(d => d.hasBlockedData);
+const d = held[held.length - 1];
+const text = WhisperDownloadGuard.describe(d);
+let after = null;
+if (allow) {
+  await d.unblock();
+  after = { succeeded: d.succeeded, targetHasData: (await IOUtils.stat(d.target.path)).size > 0 };
+}
+return { text, after };
+"""
+
+HANDLER_JS = r"""
+// A program for the test scheme "whispertest:", as if one were installed: /bin/true.
+const eps = Cc["@mozilla.org/uriloader/external-protocol-service;1"].getService(Ci.nsIExternalProtocolService);
+const hs = Cc["@mozilla.org/uriloader/handler-service;1"].getService(Ci.nsIHandlerService);
+const info = eps.getProtocolHandlerInfo("whispertest");
+const app = Cc["@mozilla.org/uriloader/local-handler-app;1"].createInstance(Ci.nsILocalHandlerApp);
+app.executable = new FileUtils.File("/bin/true");
+app.name = "Whisper Test Program";
+info.preferredApplicationHandler = app;
+info.preferredAction = Ci.nsIHandlerInfo.useHelperApp;
+info.alwaysAskBeforeHandling = false;
+hs.store(info);
+return true;
+"""
+
+ANY_DIALOG_JS = r"""
+// Any dialog over the tab or the window (Whisper's or Firefox's own).
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const [waitMs] = args;
+const box = gBrowser.getTabDialogBox(gBrowser.selectedBrowser);
+for (let i = 0; i < waitMs / 100; i++) {
+  const d = box._tabDialogManager._topDialog ?? box.getContentDialogManager?.()._topDialog;
+  if (d || window.gDialogBox?.isOpen) {
+    await d?._dialogReady;
+    return { open: true, url: d?.frameContentWindow?.document.documentURI ?? "window dialog" };
+  }
+  await sleep(100);
+}
+return { open: false };
 """
 
 CONSOLE_JS = r"""
@@ -458,6 +602,73 @@ def test_address(b, base, report, out):
                  and any(e["type"] == "paste" for e in state["log"]), state["values"])
 
 
+def test_downloads(b, base, report):
+    engine = b.chrome(ENGINE_JS)
+    report.facts["engine"] = engine
+    report.check("downloads: the guard engine (Rust, WebAssembly in a worker) answers",
+                 engine.get("blocked") == "block" and engine.get("asked") == "ask", engine)
+    results = {}
+    for name in ["report.pdf", "disk.iso", "invoice.pdf.exe", "photo.jpg", "tool.zip"]:
+        results[name] = b.chrome(DOWNLOAD_JS, f"{base}/dl/{name}", name)
+    report.facts["downloads"] = results
+    ok = results["report.pdf"]
+    report.check("downloads: a PDF is not held", ok.get("succeeded") and ok.get("targetHasData") and not ok.get("verdict"), ok)
+    expect = {"disk.iso": "disk-image", "invoice.pdf.exe": "double-extension",
+              "photo.jpg": "content-mismatch", "tool.zip": "archive-holds"}
+    for name, code in expect.items():
+        r = results[name]
+        report.check(f"downloads: {name} is held ({code}) and not in Downloads",
+                     r.get("hasBlockedData") and not r.get("succeeded") and r.get("verdict") == f"WhisperHeld:{code}"
+                     and not r.get("targetHasData") and r.get("partHasData"), r)
+    shown = b.chrome(DESCRIBE_JS, True)
+    report.facts["download_text"] = shown
+    text = json.dumps(shown.get("text"))
+    report.check("downloads: the panel says why, and that the check ran on this device",
+                 "Whisper held this file" in text and "on this device" in text and "tool/setup.exe" in text, shown.get("text"))
+    report.check("downloads: allowing a held file puts it in Downloads",
+                 (shown.get("after") or {}).get("succeeded") and shown["after"].get("targetHasData"), shown.get("after"))
+
+
+def click(b, element_id):
+    b.m.command("Marionette:SetContext", {"value": "content"})
+    try:
+        el = b.m.command("WebDriver:FindElement", {"using": "css selector", "value": f"#{element_id}"})
+        ref = el.get("value", el)
+        ref = ref.get("element-6066-11e4-a52e-4f735466cecf", ref) if isinstance(ref, dict) else ref
+        b.m.command("WebDriver:ElementClick", {"id": ref})
+    finally:
+        b.m.command("Marionette:SetContext", {"value": "chrome"})
+
+
+def test_programs(b, base, report, out):
+    b.chrome(HANDLER_JS)
+    b.navigate(f"{base}/programs.html")
+    for link, what in [("officecmd", "ms-officecmd"), ("searchms", "search-ms"), ("msother", "another ms-* scheme"),
+                       ("unknown", "a scheme no program handles")]:
+        click(b, link)
+        d = b.chrome(ANY_DIALOG_JS, 1500)
+        report.check(f"programs: a click on a {what} link opens nothing and asks nothing", not d.get("open"), d)
+        if d.get("open"):
+            b.chrome(CLICK_JS, "button.primary")
+    # No click: a page script sends the tab to the installed program's scheme.
+    b.navigate(f"{base}/programs.html#auto")
+    d = b.chrome(ANY_DIALOG_JS, 2000)
+    report.check("programs: without a click nothing opens and nothing asks, even for an installed program",
+                 not d.get("open"), d)
+    b.navigate(f"{base}/programs.html")
+    click(b, "known")
+    d = b.chrome(DIALOG_JS, 3000)
+    report.facts["programs_dialog"] = d
+    body = (d.get("lead") or "") + " " + (d.get("body") or "")
+    report.check("programs: a click on a link to an installed program asks, naming the exact site, "
+                 "the program and its full path",
+                 d.get("open") and base in body and "Whisper Test Program" in body and "/bin/true" in body
+                 and d.get("focused") == "Cancel", d)
+    capture(b, os.path.join(out, "program-dialog.png"))
+    b.chrome(CLICK_JS, "button.primary")
+    report.check("programs: Cancel closes it", not b.chrome(DIALOG_JS, 300).get("open"))
+
+
 def test_environment(app, out, report):
     """No keys, logs or profiles because of environment variables (patches/0061)."""
     trap = tempfile.mkdtemp(prefix="whisper-env-")
@@ -497,7 +708,7 @@ def main():
     only = set(filter(None, a.only.split(",")))
     want = lambda name: not only or name in only  # noqa: E731
     report = Report()
-    srv = start_server({})
+    srv = start_server(download_routes())
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     try:
         b = Browser(a.app, a.out, "security")
@@ -508,6 +719,10 @@ def main():
                 test_seed(b, base, report, a.out)
             if want("address"):
                 test_address(b, base, report, a.out)
+            if want("programs"):
+                test_programs(b, base, report, a.out)
+            if want("downloads"):
+                test_downloads(b, base, report)
         except MarionetteError as e:
             report.check("Marionette session", False, e)
         finally:

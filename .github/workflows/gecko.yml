@@ -35,6 +35,10 @@ on:
       - profile/chrome/fonts/**
       - assets/icon/**
       - assets/installer/**
+      # The guard engine Whisper builds into the browser (gecko/scripts/build-wasm.sh)
+      - crates/dl_guard/**
+      - crates/proto_guard/**
+      - crates/wcore_wasm/**
       - .github/workflows/gecko.yml
       - .github/workflows/gecko-build.yml
       # The update test alone runs from gecko-update-test.yml with an earlier build.

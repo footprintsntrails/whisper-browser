@@ -185,6 +185,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dl_guard"
+version = "0.1.0"
+
+[[package]]
 name = "embed-resource"
 version = "3.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -626,6 +630,10 @@ checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "proto_guard"
+version = "0.1.0"
 
 [[package]]
 name = "quote"
@@ -1307,6 +1315,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "wcore_wasm"
+version = "0.1.0"
+dependencies = [
+ "dl_guard",
+ "proto_guard",
 ]
 
 [[package]]

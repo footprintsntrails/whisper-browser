@@ -15,6 +15,9 @@
 #   CryptoAddress, WhisperHash     address recognition and comparison; SHA-2 helpers
 #   WhisperAddressMemory           the last copied address, in memory only
 #   WhisperGuardDialog             opens the guard dialog over a tab
+#   WhisperGuardEngine             runs the Rust checks (crates/wcore_wasm as WebAssembly) in a worker
+#   WhisperDownloadGuard           the download check (crates/dl_guard)
+#   WhisperProtocolGuard           links that open programs, native messaging (crates/proto_guard)
 #   content/                       dialogs, the hold-to-allow button, the guard worker
 #   settings/                      settings fragments for the Whisper pane
 #   locales/                       strings
@@ -30,9 +33,12 @@ MOZ_SRC_FILES += [
     "SeedPhrase.sys.mjs",
     "SeedWordlists.sys.mjs",
     "WhisperAddressMemory.sys.mjs",
+    "WhisperDownloadGuard.sys.mjs",
     "WhisperGuardDialog.sys.mjs",
+    "WhisperGuardEngine.sys.mjs",
     "WhisperHash.sys.mjs",
     "WhisperInputGuardChild.sys.mjs",
     "WhisperInputGuardParent.sys.mjs",
+    "WhisperProtocolGuard.sys.mjs",
     "WhisperSecurity.sys.mjs",
 ]

@@ -441,6 +441,46 @@
       "why": "Background connections nobody asked for: off",
       "file": "gecko/overlay/browser/components/whisper/0-whisper.js"
     },
+    "network.protocol-handler.external.applescript": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
+    "network.protocol-handler.external.ghelp": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
+    "network.protocol-handler.external.help": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
+    "network.protocol-handler.external.ms-appinstaller": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
+    "network.protocol-handler.external.ms-officecmd": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
+    "network.protocol-handler.external.ms-settings": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
+    "network.protocol-handler.external.osascript": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
+    "network.protocol-handler.external.searchconnector-ms": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging. Windows schemes Firefox itself does not block, stopped before any JavaScript runs as well (the guard above blocks them too; this is the second lock).",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js",
+      "family": "network.protocol-handler.external."
+    },
     "network.ssl_tokens_cache_persistence": {
       "why": "Traces on this device The session file keeps tabs and history for restore, but never cookies or what was typed into forms (0 would store both for every site, 1 for http only). Downloads do not appear in the system's \"recent documents\" (Windows Start menu, GTK recent files). Desktop shortcuts made from a page do not store the site's icon on disk. Windows Restart Manager: Whisper does not register its command line (with the profile path) to be restarted after a Windows update. A download is written to the temporary folder until it is complete (and, when the download check holds it, until you decide), not half-written into Downloads. Files opened straight from a download (\"open with\") are deleted when Whisper quits. No form history: what is typed into search boxes and forms is not remembered. Media in private windows is cached in memory only, never on disk. Windows taskbar Jump Lists would list recently and frequently visited pages. TLS session tickets stay in memory and are not saved with the profile.",
       "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
@@ -575,6 +615,26 @@
     },
     "whisper.security.addressguard.minutes": {
       "why": "Swapped address guard (WhisperInputGuardChild.sys.mjs) A pasted cryptocurrency address is compared with the last address copied in Whisper (Copy or Ctrl+C on a page) within the minutes below; a different address of the same chain is stopped with a warning that shows both. In memory only.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.downloads.enabled": {
+      "why": "Download check (WhisperDownloadGuard.sys.mjs, crates/dl_guard) Risky downloads are held until you decide: disc images, shortcuts, scripts, app packages, names that hide their real type, content that does not match its name, ZIP archives holding such files. The check runs on this device; nothing is sent.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.downloads.hold_programs": {
+      "why": "Download check (WhisperDownloadGuard.sys.mjs, crates/dl_guard) Risky downloads are held until you decide: disc images, shortcuts, scripts, app packages, names that hide their real type, content that does not match its name, ZIP archives holding such files. The check runs on this device; nothing is sent. Programs (.exe, .msi) are held too, unless you already allowed one from that site in this session. Off: programs are held only for the reasons above.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.nativemessaging.ask": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\"). Ask before an add-on starts a program through native messaging.",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.protocols.allowed_ms_schemes": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme. ms-* schemes to ask about instead of blocking, comma separated (e.g. \"ms-teams\").",
+      "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
+    },
+    "whisper.security.protocols.enabled": {
+      "why": "External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) Links from pages that open another program: dangerous schemes (every ms-* handler, search, help viewers, file sharing, script runners) never open; for the rest a dialog shows the program's name and full path, and \"always\" is remembered per exact origin. Without a click on the page nothing opens, the same as for a blocked scheme.",
       "file": "gecko/overlay/browser/components/whisper/security/0-whisper-security.js"
     },
     "whisper.security.seedguard.enabled": {

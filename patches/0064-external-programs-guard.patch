@@ -1,0 +1,47 @@
+Whisper: links that open other programs go through Whisper's rules first
+
+What: ContentDispatchChooser.handleURI first asks WhisperProtocolGuard
+(browser/components/whisper/security/WhisperProtocolGuard.sys.mjs) about every external
+link a page opens; when it answers that it handled the link, Firefox does nothing more.
+Why: Firefox's block list is a fixed set of exact names in prefs, checked in C++; it
+cannot block a family (every "ms-" handler: ms-msdt, ms-officecmd, ms-appinstaller, ...)
+and its dialog shows neither where the program is nor stays with one exact origin.
+Whisper's guard blocks the schemes named in crates/proto_guard, answers the same way for
+blocked, unknown and (without a click) installed schemes so pages cannot list installed
+programs, and otherwise asks with the program's name and full path. With
+whisper.security.protocols.enabled off, or for links the user opens himself, Firefox's
+flow runs unchanged.
+---
+diff --git a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
+--- a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
++++ b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
+@@ -12,6 +12,8 @@
+ 
+ ChromeUtils.defineESModuleGetters(lazy, {
+   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
++  WhisperProtocolGuard:
++    "moz-src:///browser/components/whisper/security/WhisperProtocolGuard.sys.mjs",
+ });
+ 
+ const DIALOG_URL_APP_CHOOSER =
+@@ -65,6 +67,20 @@
+     aTriggeredExternally = false,
+     aHasValidUserGestureActivation = false
+   ) {
++    // Whisper: links from pages go through Whisper's rules first (blocked schemes,
++    // the program's name and path, permission for the exact origin).
++    if (
++      await lazy.WhisperProtocolGuard.handleURI(
++        aHandler,
++        aURI,
++        aPrincipal,
++        aBrowsingContext,
++        aTriggeredExternally,
++        aHasValidUserGestureActivation
++      )
++    ) {
++      return;
++    }
+     const isStandardProtocol = E10SUtils.STANDARD_SAFE_PROTOCOLS.includes(
+       aURI.scheme
+     );

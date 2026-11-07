@@ -148,3 +148,9 @@
   outline: var(--focus-outline, 2px solid AccentColor);
   outline-offset: var(--focus-outline-offset, 2px);
 }
+
+.remember {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small, 6px);
+}

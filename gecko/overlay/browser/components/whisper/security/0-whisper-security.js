@@ -92,3 +92,34 @@ pref("whisper.security.seedguard.pause_after_words", 6);
 // the same chain is stopped with a warning that shows both. In memory only.
 pref("whisper.security.addressguard.enabled", true);
 pref("whisper.security.addressguard.minutes", 10);
+
+// --- Download check (WhisperDownloadGuard.sys.mjs, crates/dl_guard) ----------------
+// Risky downloads are held until you decide: disc images, shortcuts, scripts, app
+// packages, names that hide their real type, content that does not match its name,
+// ZIP archives holding such files. The check runs on this device; nothing is sent.
+pref("whisper.security.downloads.enabled", true);
+// Programs (.exe, .msi) are held too, unless you already allowed one from that site in
+// this session. Off: programs are held only for the reasons above.
+pref("whisper.security.downloads.hold_programs", true);
+
+// --- External programs (WhisperProtocolGuard.sys.mjs, crates/proto_guard) ----------
+// Links from pages that open another program: dangerous schemes (every ms-* handler,
+// search, help viewers, file sharing, script runners) never open; for the rest a dialog
+// shows the program's name and full path, and "always" is remembered per exact origin.
+// Without a click on the page nothing opens, the same as for a blocked scheme.
+pref("whisper.security.protocols.enabled", true);
+// ms-* schemes to ask about instead of blocking, comma separated (e.g. "ms-teams").
+pref("whisper.security.protocols.allowed_ms_schemes", "");
+// Ask before an add-on starts a program through native messaging.
+pref("whisper.security.nativemessaging.ask", true);
+// Windows schemes Firefox itself does not block, stopped before any JavaScript runs
+// as well (the guard above blocks them too; this is the second lock).
+pref("network.protocol-handler.external.ms-officecmd", false, locked);
+pref("network.protocol-handler.external.ms-appinstaller", false, locked);
+pref("network.protocol-handler.external.ms-settings", false, locked);
+pref("network.protocol-handler.external.searchconnector-ms", false, locked);
+pref("network.protocol-handler.external.ghelp", false, locked);
+pref("network.protocol-handler.external.help", false, locked);
+pref("network.protocol-handler.external.applescript", false, locked);
+pref("network.protocol-handler.external.osascript", false, locked);
+

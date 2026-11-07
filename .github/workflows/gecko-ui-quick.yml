@@ -18,6 +18,9 @@ on:
     branches: [main, wip/gecko, wip/updates]
     paths:
       - gecko/overlay/browser/components/whisper/**
+      - crates/dl_guard/**
+      - crates/proto_guard/**
+      - crates/wcore_wasm/**
       - gecko/overlay/browser/branding/whisper/content/aboutDialog.css
       - gecko/overlay/browser/branding/whisper/content/about.png
       - gecko/scripts/smoke/**
